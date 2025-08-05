@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 from flask_bcrypt import Bcrypt
 import sqlite3
 import jwt
@@ -9,6 +10,9 @@ import os
 app = Flask(__name__, static_folder=None)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'change-this-secret')
 bcrypt = Bcrypt(app)
+
+# Enable CORS with support for credentials so cookies are sent/received
+CORS(app, supports_credentials=True)
 
 DATABASE = 'users.db'
 
@@ -30,9 +34,7 @@ init_db()
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth_header = request.headers.get('Authorization', '')
-        parts = auth_header.split()
-        token = parts[1] if len(parts) == 2 and parts[0] == 'Bearer' else None
+        token = request.cookies.get('token')
         if not token:
             return jsonify({'message': 'Token is missing!'}), 401
         try:
@@ -80,8 +82,23 @@ def login():
     if row and bcrypt.check_password_hash(row[1], password):
         token = jwt.encode({'id': row[0], 'exp': datetime.utcnow() + timedelta(hours=1)},
                            app.config['SECRET_KEY'], algorithm='HS256')
-        return jsonify({'token': token})
+        resp = jsonify({'message': 'Login successful'})
+        resp.set_cookie(
+            'token',
+            token,
+            httponly=True,
+            secure=True,
+            samesite='Strict'
+        )
+        return resp
     return jsonify({'message': 'Invalid credentials'}), 401
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    resp = jsonify({'message': 'Logged out'})
+    resp.set_cookie('token', '', expires=0, httponly=True, secure=True, samesite='Strict')
+    return resp
 
 
 @app.route('/protected')

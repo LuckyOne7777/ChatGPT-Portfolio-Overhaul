@@ -32,6 +32,7 @@ document.getElementById('register-form').addEventListener('submit', async e => {
     const res = await fetch('/register', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
         body: JSON.stringify({
             username: document.getElementById('reg-username').value,
             email: document.getElementById('reg-email').value,
@@ -47,31 +48,32 @@ document.getElementById('login-form').addEventListener('submit', async e => {
     const res = await fetch('/login', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
         body: JSON.stringify({
             email: document.getElementById('login-email').value,
             password: document.getElementById('login-password').value
         })
     });
     const data = await res.json();
-    if (res.ok) {
-        localStorage.setItem('token', data.token);
-    }
     output.textContent = JSON.stringify(data, null, 2);
 });
 
 
 document.getElementById('protected-btn').addEventListener('click', async () => {
-    const token = localStorage.getItem('token');
     const res = await fetch('/protected', {
-        headers: {'Authorization': 'Bearer ' + token}
+        credentials: 'include'
     });
     const data = await res.json();
     output.textContent = JSON.stringify(data, null, 2);
 });
 
-document.getElementById('logout-btn').addEventListener('click', () => {
-    localStorage.removeItem('token');
-    output.textContent = 'Logged out';
+document.getElementById('logout-btn').addEventListener('click', async () => {
+    const res = await fetch('/logout', {
+        method: 'POST',
+        credentials: 'include'
+    });
+    const data = await res.json();
+    output.textContent = JSON.stringify(data, null, 2);
 });
 </script>
 </body>
