@@ -73,4 +73,57 @@ document.addEventListener('DOMContentLoaded', () => {
             drawChart(btn.dataset.range);
         });
     });
+
+    loadPortfolio();
+    loadTradeLog();
+
+    async function loadPortfolio() {
+        try {
+            const res = await fetch('/api/portfolio');
+            if (!res.ok) throw new Error('Failed to load portfolio');
+            const data = await res.json();
+            const tbody = document.getElementById('portfolioTableBody');
+            tbody.innerHTML = '';
+            data.positions.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${p.Ticker}</td>
+                    <td>${p.Shares}</td>
+                    <td>$${p.Cost_Basis}</td>
+                    <td>$${p.Current_Price}</td>
+                    <td>${p.PnL}</td>
+                    <td>$${p.Stop_Loss}</td>`;
+                tbody.appendChild(tr);
+            });
+            if (data.total_equity) {
+                document.getElementById('totalEquity').textContent = `$${data.total_equity}`;
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function loadTradeLog() {
+        try {
+            const res = await fetch('/api/trade-log');
+            if (!res.ok) throw new Error('Failed to load trade log');
+            const data = await res.json();
+            const tbody = document.getElementById('tradeLogBody');
+            tbody.innerHTML = '';
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.Date}</td>
+                    <td>${item.Ticker}</td>
+                    <td>${item.Action}</td>
+                    <td>$${item.Price}</td>
+                    <td>${item.Quantity}</td>
+                    <td>${item.Reason}</td>`;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('numTrades').textContent = data.length;
+        } catch (err) {
+            console.error(err);
+        }
+    }
 });
