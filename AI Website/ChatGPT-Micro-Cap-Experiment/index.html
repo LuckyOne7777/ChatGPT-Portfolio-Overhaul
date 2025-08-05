@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChatGPT Micro-Cap Experiment</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header>
+        <h1>ChatGPT Micro-Cap Experiment</h1>
+        <nav>
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#portfolio">Portfolio</a></li>
+                <li><a href="#trade-log">Trade Log</a></li>
+                <li><a href="#graphs">Graphs</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                <li><a href="#blog">Blog</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section id="home">
+            <div class="summary-cards">
+                <div class="card">
+                    <h3>Current Total Equity</h3>
+                    <p id="totalEquity">$100,000</p>
+                </div>
+                <div class="card">
+                    <h3>Benchmark (S&P 500) Comparison</h3>
+                    <p id="benchmarkComparison">+2.5%</p>
+                </div>
+                <div class="card">
+                    <h3>Sharpe Ratio</h3>
+                    <p id="sharpeRatio">1.4</p>
+                </div>
+                <div class="card">
+                    <h3>Sortino Ratio</h3>
+                    <p id="sortinoRatio">1.7</p>
+                </div>
+                <div class="card">
+                    <h3>Number of Trades</h3>
+                    <p id="numTrades">42</p>
+                </div>
+                <div class="card">
+                    <h3>Win Rate</h3>
+                    <p id="winRate">60%</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="graphs">
+            <h2>Portfolio vs Benchmark</h2>
+            <div class="timeframe-buttons">
+                <button data-range="1W">1W</button>
+                <button data-range="1M">1M</button>
+                <button data-range="Max" class="active">Max</button>
+            </div>
+            <canvas id="portfolioChart" width="800" height="400"></canvas>
+        </section>
+
+        <section id="portfolio">
+            <h2>Portfolio</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Shares</th>
+                            <th>Cost Basis</th>
+                            <th>Current Price</th>
+                            <th>PnL</th>
+                            <th>Stop Loss</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolioTableBody">
+                        <tr>
+                            <td>ABC</td>
+                            <td>100</td>
+                            <td>$10.00</td>
+                            <td>$12.00</td>
+                            <td>$200</td>
+                            <td>$9.00</td>
+                        </tr>
+                        <!-- Additional rows can be added here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="trade-log">
+            <h2>Trade Log</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Ticker</th>
+                            <th>Buy/Sell</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeLogBody">
+                        <tr>
+                            <td>2024-01-01</td>
+                            <td>ABC</td>
+                            <td>Buy</td>
+                            <td>$10.00</td>
+                            <td>100</td>
+                            <td>Oversold conditions</td>
+                        </tr>
+                        <!-- Additional rows can be added here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <section id="about">
+            <h2>About</h2>
+            <p>The ChatGPT Micro-Cap Experiment is an AI-managed portfolio exploring strategies
+            in the micro-cap stock space.</p>
+            <a class="github-button" href="https://github.com" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

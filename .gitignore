@@ -1,0 +1,4 @@
+# Ignore SQLite database and bytecode artifacts
+**/users.db
+__pycache__/
+*.pyc

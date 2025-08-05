@@ -1,0 +1,7 @@
+numpy==1.26.4
+pandas==2.2.2
+yfinance==0.2.38
+matplotlib==3.8.4
+Flask==3.0.2
+Flask-Bcrypt==1.0.1
+PyJWT==2.8.0
