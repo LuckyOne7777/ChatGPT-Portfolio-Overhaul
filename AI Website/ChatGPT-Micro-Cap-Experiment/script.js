@@ -5,9 +5,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = canvas.getContext('2d');
     const token = localStorage.getItem('token');
 
-    loadEquityHistory();
-    loadPortfolio();
-    loadTradeLog();
+    init();
+
+    async function init() {
+        await checkStartingCash();
+        loadEquityHistory();
+        loadPortfolio();
+        loadTradeLog();
+    }
+
+    async function checkStartingCash() {
+        try {
+            const res = await fetch('/api/needs-cash', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to check starting cash');
+            const data = await res.json();
+            if (data.needs_cash) {
+                let amount;
+                do {
+                    amount = prompt('Enter starting cash (max 100000):');
+                    if (amount === null) return; // user cancelled
+                    amount = parseFloat(amount);
+                } while (isNaN(amount) || amount < 0 || amount > 100000);
+
+                await fetch('/api/set-cash', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ cash: amount })
+                });
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
 
     async function loadEquityHistory() {
         try {

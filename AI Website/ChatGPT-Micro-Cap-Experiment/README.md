@@ -54,6 +54,9 @@ Visualization tools — Matplotlib graphs comparing ChatGPT vs Index
 
 Logs & trade data — Auto-saved logs for transparency
 
+Starting balance prompt — New users without trade history are asked to set a
+cash balance (up to $100k)
+
 # Why This Matters
 AI is being hyped across every industry, but can it really manage money without guidance?
 
