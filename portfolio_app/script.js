@@ -186,8 +186,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify(payload),
                 });
                 if (!res.ok) {
-                    const errData = await res.json();
-                    showError(errData.message || 'Trade failed');
+                    let msg = 'Trade failed';
+                    try {
+                        const errData = await res.json();
+                        if (errData && errData.message) msg = errData.message;
+                    } catch (_) {
+                        // Response might not be JSON; keep default message
+                    }
+                    showError(msg);
                     return;
                 }
                 tradeForm.reset();
