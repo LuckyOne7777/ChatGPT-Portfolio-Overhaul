@@ -8,10 +8,12 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
 
     async function init() {
-        await checkStartingCash();
+        const hasTrades = await loadTradeLog();
+        if (!hasTrades) {
+            await checkStartingCash();
+        }
         loadEquityHistory();
         loadPortfolio();
-        loadTradeLog();
     }
 
     async function checkStartingCash() {
@@ -132,8 +134,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             document.getElementById('numTrades').textContent = data.length;
             document.getElementById('winRate').textContent = sells ? `${Math.round((wins / sells) * 100)}%` : '0%';
+            return data.length > 0;
         } catch (err) {
             console.error(err);
+            return false;
         }
     }
 });

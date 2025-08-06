@@ -39,39 +39,6 @@ document.getElementById('login-form').addEventListener('submit', async e => {
     const data = await res.json();
     if (res.ok) {
         localStorage.setItem('token', data.token);
-        const token = data.token;
-
-        // Prompt for starting cash if the account has no balance yet
-        try {
-            const needsRes = await fetch('/api/needs-cash', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (needsRes.ok) {
-                const needsData = await needsRes.json();
-                if (needsData.needs_cash) {
-                    let amount;
-                    do {
-                        amount = prompt('Enter starting cash (max 100000):');
-                        if (amount === null) break;
-                        amount = parseFloat(amount);
-                    } while (isNaN(amount) || amount < 0 || amount > 100000);
-
-                    if (amount !== null && !isNaN(amount)) {
-                        await fetch('/api/set-cash', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                Authorization: `Bearer ${token}`
-                            },
-                            body: JSON.stringify({ cash: amount })
-                        });
-                    }
-                }
-            }
-        } catch (err) {
-            console.error(err);
-        }
-
         window.location.href = '/dashboard';
     } else {
         document.getElementById('error').textContent = data.message || 'Login failed';
