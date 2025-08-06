@@ -449,20 +449,24 @@ def api_trade(user_id):
     stop_loss = data.get('stop_loss')
     if not ticker or action not in {'buy', 'sell'} or price <= 0 or shares <= 0:
         return jsonify({'message': 'Invalid trade data'}), 400
-    # Validate stop-loss if provided (allow float or percentage string like "5%")
-    if stop_loss not in (None, ''):
-        stop_loss_str = str(stop_loss).strip()
-        if stop_loss_str.endswith('%'):
-            try:
-                float(stop_loss_str[:-1])
-            except ValueError:
-                return jsonify({'message': 'Invalid stop loss value'}), 400
+    if action == 'sell' and stop_loss not in (None, ''):
+        return jsonify({'message': 'Stop loss not allowed on sell orders'}), 400
+    if action == 'buy':
+        if stop_loss not in (None, ''):
+            stop_loss_str = str(stop_loss).strip()
+            if stop_loss_str.endswith('%'):
+                try:
+                    float(stop_loss_str[:-1])
+                except ValueError:
+                    return jsonify({'message': 'Invalid stop loss value'}), 400
+            else:
+                try:
+                    float(stop_loss_str)
+                except (TypeError, ValueError):
+                    return jsonify({'message': 'Invalid stop loss value'}), 400
+            stop_loss = stop_loss_str
         else:
-            try:
-                float(stop_loss_str)
-            except (TypeError, ValueError):
-                return jsonify({'message': 'Invalid stop loss value'}), 400
-        stop_loss = stop_loss_str
+            stop_loss = ''
     else:
         stop_loss = ''
     if not is_valid_ticker(ticker):
@@ -511,7 +515,9 @@ def api_trade(user_id):
         }
     else:  # sell
         pos = positions.get(ticker)
-        if not pos or pos['shares'] < shares:
+        if not pos:
+            return jsonify({'message': 'Ticker not in portfolio'}), 400
+        if pos['shares'] < shares:
             return jsonify({'message': 'Not enough shares'}), 400
         total_shares = pos['shares']
         cost_basis_per_share = pos['cost_basis'] / total_shares
