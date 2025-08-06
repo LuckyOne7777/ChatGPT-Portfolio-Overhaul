@@ -21,7 +21,9 @@ bcrypt = Bcrypt(app)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'Scripts and CSV Files')
 DATABASE = os.path.join(BASE_DIR, 'users.db')
-SAMPLE_PORTFOLIO = os.path.join(DATA_DIR, 'sample_chatgpt_portfolio.csv')
+# Use ChatGPT's actual logs as the publicly viewable samples
+SAMPLE_PORTFOLIO = os.path.join(DATA_DIR, 'chatgpt_portfolio_update.csv')
+SAMPLE_TRADE_LOG = os.path.join(DATA_DIR, 'chatgpt_trade_log.csv')
 
 
 def ensure_user_files(username: str) -> Tuple[str, str, str]:
@@ -185,6 +187,16 @@ def serve_sample_portfolio_js():
     return send_from_directory('.', 'sample_portfolio.js')
 
 
+@app.route('/sample-trade-log')
+def sample_trade_log_page():
+    return send_from_directory('templates', 'sample_trade_log.html')
+
+
+@app.route('/sample_trade_log.js')
+def serve_sample_trade_log_js():
+    return send_from_directory('.', 'sample_trade_log.js')
+
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json() or {}
@@ -333,6 +345,13 @@ def read_sample_portfolio():
     return positions, total_equity
 
 
+def read_sample_trade_log():
+    if not os.path.exists(SAMPLE_TRADE_LOG):
+        return []
+    with open(SAMPLE_TRADE_LOG, newline='') as f:
+        return list(csv.DictReader(f))
+
+
 @app.route('/api/trade', methods=['POST'])
 @token_required
 def api_trade(user_id):
@@ -464,6 +483,12 @@ def api_trade(user_id):
 def api_sample_portfolio():
     positions, total_equity = read_sample_portfolio()
     return jsonify({'positions': positions, 'total_equity': total_equity})
+
+
+@app.route('/api/sample-trade-log')
+def api_sample_trade_log():
+    trades = read_sample_trade_log()
+    return jsonify({'trades': trades})
 
 
 @app.route('/api/portfolio')
