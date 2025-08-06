@@ -21,6 +21,7 @@ bcrypt = Bcrypt(app)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'Scripts and CSV Files')
 DATABASE = os.path.join(BASE_DIR, 'users.db')
+SAMPLE_PORTFOLIO = os.path.join(DATA_DIR, 'sample_chatgpt_portfolio.csv')
 
 
 def ensure_user_files(username: str) -> Tuple[str, str, str]:
@@ -174,6 +175,16 @@ def serve_login_css():
     return send_from_directory('.', 'login.css')
 
 
+@app.route('/sample-portfolio')
+def sample_portfolio_page():
+    return send_from_directory('templates', 'sample_portfolio.html')
+
+
+@app.route('/sample_portfolio.js')
+def serve_sample_portfolio_js():
+    return send_from_directory('.', 'sample_portfolio.js')
+
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json() or {}
@@ -294,6 +305,31 @@ def get_latest_portfolio(user_id: int):
         with open(cash_file) as f:
             total_equity = f.read().strip() or '0'
 
+    return positions, total_equity
+
+
+def read_sample_portfolio():
+    if not os.path.exists(SAMPLE_PORTFOLIO):
+        return [], '0'
+    with open(SAMPLE_PORTFOLIO, newline='') as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return [], '0'
+    non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
+    latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
+    positions: list[dict[str, str]] = []
+    total_equity = None
+    for row in rows:
+        if row['Date'] == latest_date and row['Ticker'] != 'TOTAL':
+            positions.append({
+                'Ticker': row['Ticker'],
+                'Shares': row['Shares'],
+                'Cost_Basis': row['Cost Basis'],
+                'Current_Price': row['Current Price'],
+                'PnL': row['PnL'],
+            })
+        elif row['Date'] == latest_date and row['Ticker'] == 'TOTAL':
+            total_equity = row.get('Total Equity') or row.get('Cash Balance')
     return positions, total_equity
 
 
@@ -422,6 +458,13 @@ def api_trade(user_id):
         })
 
     return jsonify({'message': 'Trade recorded', 'cash': cash})
+
+
+@app.route('/api/sample-portfolio')
+def api_sample_portfolio():
+    positions, total_equity = read_sample_portfolio()
+    return jsonify({'positions': positions, 'total_equity': total_equity})
+
 
 @app.route('/api/portfolio')
 @token_required

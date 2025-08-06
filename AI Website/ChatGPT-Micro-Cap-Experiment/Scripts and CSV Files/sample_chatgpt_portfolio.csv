@@ -1,0 +1,4 @@
+Date,Ticker,Shares,Cost Basis,Stop Loss,Current Price,Total Value,PnL,Action,Cash Balance,Total Equity
+2024-01-01,ABC,10,5.00,4.00,5.50,55,5,HOLD,,
+2024-01-01,XYZ,20,2.50,2.00,2.75,55,5,HOLD,,
+2024-01-01,TOTAL,,,,,110,10,,0,110
