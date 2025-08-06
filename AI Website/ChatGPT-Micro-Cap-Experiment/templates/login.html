@@ -2,76 +2,47 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Auth Demo</title>
+    <title>Login - Portfolio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="/login.css">
 </head>
 <body>
-<h2>Register</h2>
-<form id="register-form">
-    <input type="text" id="reg-username" placeholder="Username" required><br>
-    <input type="email" id="reg-email" placeholder="Email" required><br>
-    <input type="password" id="reg-password" placeholder="Password" required><br>
-    <button type="submit">Register</button>
-</form>
-
-<h2>Login</h2>
-<form id="login-form">
-    <input type="email" id="login-email" placeholder="Email" required><br>
-    <input type="password" id="login-password" placeholder="Password" required><br>
-    <button type="submit">Login</button>
-</form>
-
-<button id="protected-btn">Get Protected Message</button>
-<button id="logout-btn">Logout</button>
-<pre id="output"></pre>
-
+<div class="login-container">
+    <form id="login-form">
+        <h2>Welcome Back</h2>
+        <div class="input-group">
+            <i class="fas fa-user"></i>
+            <input type="text" id="login-username" placeholder="Username" required>
+        </div>
+        <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" id="login-password" placeholder="Password" required>
+        </div>
+        <button type="submit">Login</button>
+        <p id="error" class="error-message"></p>
+    </form>
+</div>
 <script>
-const output = document.getElementById('output');
-
-document.getElementById('register-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const res = await fetch('/register', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            username: document.getElementById('reg-username').value,
-            email: document.getElementById('reg-email').value,
-            password: document.getElementById('reg-password').value
-        })
-    });
-    const data = await res.json();
-    output.textContent = JSON.stringify(data, null, 2);
-});
-
 document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const res = await fetch('/login', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            email: document.getElementById('login-email').value,
+            username: document.getElementById('login-username').value,
             password: document.getElementById('login-password').value
         })
     });
     const data = await res.json();
     if (res.ok) {
         localStorage.setItem('token', data.token);
+        window.location.href = '/dashboard';
+    } else {
+        document.getElementById('error').textContent = data.message || 'Login failed';
     }
-    output.textContent = JSON.stringify(data, null, 2);
-});
-
-
-document.getElementById('protected-btn').addEventListener('click', async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/protected', {
-        headers: {'Authorization': 'Bearer ' + token}
-    });
-    const data = await res.json();
-    output.textContent = JSON.stringify(data, null, 2);
-});
-
-document.getElementById('logout-btn').addEventListener('click', () => {
-    localStorage.removeItem('token');
-    output.textContent = 'Logged out';
 });
 </script>
 </body>
