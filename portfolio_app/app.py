@@ -450,7 +450,7 @@ def api_trade(user_id):
     if not ticker or action not in {'buy', 'sell'} or price <= 0 or shares <= 0:
         return jsonify({'message': 'Invalid trade data'}), 400
     if action == 'sell' and stop_loss not in (None, ''):
-        return jsonify({'message': 'Stop loss not allowed on sell orders'}), 400
+        return jsonify({'message': 'Cannot set a stop loss on a sell order'}), 400
     if action == 'buy':
         if stop_loss not in (None, ''):
             stop_loss_str = str(stop_loss).strip()
@@ -495,7 +495,7 @@ def api_trade(user_id):
     if action == 'buy':
         cost = price * shares
         if cost > cash:
-            return jsonify({'message': 'Insufficient cash'}), 400
+            return jsonify({'message': "You don't have enough cash to buy these shares"}), 400
         pos = positions.setdefault(ticker, {'shares': 0.0, 'cost_basis': 0.0, 'stop_loss': ''})
         pos['shares'] += shares
         pos['cost_basis'] += cost
@@ -516,9 +516,9 @@ def api_trade(user_id):
     else:  # sell
         pos = positions.get(ticker)
         if not pos:
-            return jsonify({'message': 'Ticker not in portfolio'}), 400
+            return jsonify({'message': "You don't own this ticker"}), 400
         if pos['shares'] < shares:
-            return jsonify({'message': 'Not enough shares'}), 400
+            return jsonify({'message': "You're trying to sell more shares than you own"}), 400
         total_shares = pos['shares']
         cost_basis_per_share = pos['cost_basis'] / total_shares
         cost_basis = cost_basis_per_share * shares
