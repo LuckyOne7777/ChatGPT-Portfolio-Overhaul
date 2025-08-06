@@ -260,7 +260,7 @@ def api_set_cash(user_id):
         amount = float(data.get('cash', 0))
     except (TypeError, ValueError):
         return jsonify({'message': 'Invalid cash amount'}), 400
-    if amount < 0 or amount > 100_000:
+    if amount < 0 or amount >= 100_000:
         return jsonify({'message': 'Cash must be between 0 and 100000'}), 400
 
     _, _, _, cash_file = get_user_files(user_id)
