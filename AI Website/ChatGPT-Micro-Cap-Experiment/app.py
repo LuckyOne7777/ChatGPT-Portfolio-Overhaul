@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_bcrypt import Bcrypt
 import sqlite3
 import jwt
@@ -189,6 +189,39 @@ def serve_sample_portfolio_js():
 @app.route('/sample_trade_log.js')
 def serve_sample_trade_log_js():
     return send_from_directory('.', 'sample_trade_log.js')
+
+
+@app.route('/sample')
+def sample_page():
+    return send_from_directory('templates', 'sample.html')
+
+
+@app.route('/sample_chart.png')
+def sample_chart_png():
+    """Generate a PNG equity history chart for the public sample portfolio."""
+    history = read_sample_equity_history()
+    if not history:
+        return '', 404
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from io import BytesIO
+
+    dates = [datetime.strptime(h['Date'], '%Y-%m-%d') for h in history]
+    equities = [float(h['Total Equity']) for h in history]
+
+    fig, ax = plt.subplots()
+    ax.plot(dates, equities)
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Total Equity')
+    ax.set_title('Sample Equity History')
+    fig.autofmt_xdate()
+
+    buf = BytesIO()
+    fig.savefig(buf, format='png')
+    plt.close(fig)
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png')
 
 
 @app.route('/register', methods=['POST'])
