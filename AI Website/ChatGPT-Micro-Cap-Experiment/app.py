@@ -346,6 +346,16 @@ def read_sample_trade_log():
         return list(csv.DictReader(f))
 
 
+def read_sample_equity_history():
+    history = []
+    if os.path.exists(SAMPLE_PORTFOLIO):
+        with open(SAMPLE_PORTFOLIO, newline='') as f:
+            for row in csv.DictReader(f):
+                if row.get('Ticker') == 'TOTAL':
+                    history.append({'Date': row.get('Date'), 'Total Equity': row.get('Total Equity')})
+    return history
+
+
 @app.route('/api/trade', methods=['POST'])
 @token_required
 def api_trade(user_id):
@@ -483,6 +493,11 @@ def api_sample_portfolio():
 def api_sample_trade_log():
     trades = read_sample_trade_log()
     return jsonify({'trades': trades})
+
+
+@app.route('/api/sample-equity-history')
+def api_sample_equity_history():
+    return jsonify(read_sample_equity_history())
 
 
 @app.route('/api/portfolio')
