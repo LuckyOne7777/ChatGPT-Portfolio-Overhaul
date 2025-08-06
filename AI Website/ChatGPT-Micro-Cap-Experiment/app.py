@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file, render_template
 from flask_bcrypt import Bcrypt
 import sqlite3
 import jwt
@@ -22,7 +22,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'Scripts and CSV Files')
 DATABASE = os.path.join(BASE_DIR, 'users.db')
 # Use ChatGPT's actual logs as the publicly viewable samples
-SAMPLE_PORTFOLIO = os.path.join(DATA_DIR, 'chatgpt_portfolio_update.csv')
+SAMPLE_PORTFOLIO = os.path.join(DATA_DIR, 'chatgpt_portfolio.csv')
 SAMPLE_TRADE_LOG = os.path.join(DATA_DIR, 'chatgpt_trade_log.csv')
 
 
@@ -193,7 +193,7 @@ def serve_sample_trade_log_js():
 
 @app.route('/sample')
 def sample_page():
-    return send_from_directory('templates', 'sample.html')
+    return render_template('sample.html')
 
 
 @app.route('/sample_chart.png')
