@@ -50,8 +50,8 @@ def token_required(f):
 
 
 @app.route('/')
-def serve_index():
-    return send_from_directory('templates', 'login.html')
+def serve_home():
+    return send_from_directory('templates', 'home.html')
 
 
 @app.route('/dashboard')
@@ -67,6 +67,11 @@ def serve_script():
 @app.route('/styles.css')
 def serve_styles():
     return send_from_directory('.', 'styles.css')
+
+
+@app.route('/login.css')
+def serve_login_css():
+    return send_from_directory('.', 'login.css')
 
 
 @app.route('/register', methods=['POST'])
@@ -89,14 +94,19 @@ def register():
     return jsonify({'message': 'User registered successfully'}), 201
 
 
+@app.route('/login', methods=['GET'])
+def login_page():
+    return send_from_directory('templates', 'login.html')
+
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json() or {}
-    email = data.get('email')
+    username = data.get('username')
     password = data.get('password')
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
-        c.execute('SELECT id, password FROM users WHERE email=?', (email,))
+        c.execute('SELECT id, password FROM users WHERE username=?', (username,))
         row = c.fetchone()
     if row and bcrypt.check_password_hash(row[1], password):
         token = jwt.encode({'id': row[0], 'exp': datetime.utcnow() + timedelta(hours=1)},
