@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 import os
 import csv
-from typing import Tuple
+from typing import Tuple, Any
 import yfinance as yf
 from pathlib import Path
 
@@ -446,8 +446,25 @@ def api_trade(user_id):
     except (TypeError, ValueError):
         return jsonify({'message': 'Invalid price or shares'}), 400
     reason = data.get('reason', '')
+    stop_loss = data.get('stop_loss')
     if not ticker or action not in {'buy', 'sell'} or price <= 0 or shares <= 0:
         return jsonify({'message': 'Invalid trade data'}), 400
+    # Validate stop-loss if provided (allow float or percentage string like "5%")
+    if stop_loss not in (None, ''):
+        stop_loss_str = str(stop_loss).strip()
+        if stop_loss_str.endswith('%'):
+            try:
+                float(stop_loss_str[:-1])
+            except ValueError:
+                return jsonify({'message': 'Invalid stop loss value'}), 400
+        else:
+            try:
+                float(stop_loss_str)
+            except (TypeError, ValueError):
+                return jsonify({'message': 'Invalid stop loss value'}), 400
+        stop_loss = stop_loss_str
+    else:
+        stop_loss = ''
     if not is_valid_ticker(ticker):
         return jsonify({'message': 'Invalid ticker'}), 400
 
@@ -458,7 +475,7 @@ def api_trade(user_id):
         with open(cash_file) as f:
             cash = float(f.read().strip() or 0)
 
-    positions: dict[str, dict[str, float]] = {}
+    positions: dict[str, dict[str, Any]] = {}
     if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
         with open(portfolio_csv, newline='') as f:
             reader = csv.DictReader(f)
@@ -467,6 +484,7 @@ def api_trade(user_id):
                     positions[row['Ticker']] = {
                         'shares': float(row.get('Shares', 0) or 0),
                         'cost_basis': float(row.get('Cost Basis', 0) or 0),
+                        'stop_loss': row.get('Stop Loss', ''),
                     }
 
     date = datetime.utcnow().strftime('%Y-%m-%d')
@@ -474,9 +492,11 @@ def api_trade(user_id):
         cost = price * shares
         if cost > cash:
             return jsonify({'message': 'Insufficient cash'}), 400
-        pos = positions.setdefault(ticker, {'shares': 0.0, 'cost_basis': 0.0})
+        pos = positions.setdefault(ticker, {'shares': 0.0, 'cost_basis': 0.0, 'stop_loss': ''})
         pos['shares'] += shares
         pos['cost_basis'] += cost
+        if stop_loss:
+            pos['stop_loss'] = stop_loss
         cash -= cost
         log = {
             'Date': date,
@@ -537,7 +557,7 @@ def api_trade(user_id):
                 'Ticker': t,
                 'Shares': info['shares'],
                 'Cost Basis': info['cost_basis'],
-                'Stop Loss': '',
+                'Stop Loss': info.get('stop_loss', ''),
                 'Current Price': '',
                 'Total Value': '',
                 'PnL': '',
