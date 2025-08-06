@@ -8,6 +8,7 @@ import os
 import csv
 from typing import Tuple
 import yfinance as yf
+from trading_script import process_portfolio
 
 try:  # Optional Streamlit integration for session state
     import streamlit as st
@@ -636,6 +637,14 @@ def get_equity_history(user_id: int):
 @token_required
 def api_equity_history(user_id):
     return jsonify(get_equity_history(user_id))
+
+
+@app.route('/api/process-portfolio', methods=['POST'])
+@token_required
+def api_process_portfolio(user_id):
+    """Trigger portfolio processing for the authenticated user."""
+    process_portfolio(user_id)
+    return jsonify({'message': 'Portfolio processed'})
 
 
 if __name__ == '__main__':
