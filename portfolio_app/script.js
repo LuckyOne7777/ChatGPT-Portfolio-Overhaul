@@ -172,6 +172,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 shares: parseFloat(document.getElementById('trade-shares').value),
                 reason: document.getElementById('trade-reason').value.trim(),
             };
+            const stopLossInput = document.getElementById('trade-stop-loss').value.trim();
+            if (stopLossInput) {
+                payload.stop_loss = stopLossInput;
+            }
             try {
                 const res = await fetch('/api/trade', {
                     method: 'POST',
