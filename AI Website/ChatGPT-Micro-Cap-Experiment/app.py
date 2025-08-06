@@ -99,6 +99,11 @@ def login_page():
     return send_from_directory('templates', 'login.html')
 
 
+@app.route('/signin', methods=['GET'])
+def signin_page():
+    return send_from_directory('templates', 'signin.html')
+
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json() or {}
