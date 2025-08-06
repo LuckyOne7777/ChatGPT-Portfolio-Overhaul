@@ -63,8 +63,9 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
             ])
 
     if not os.path.exists(cash_file):
-        with open(cash_file, 'w') as f:
-            f.write('100')
+        # Create an empty cash file. A starting balance will be set later
+        # if the user has no trading history.
+        open(cash_file, 'w').close()
 
     if st is not None:
         st.session_state.setdefault(username, {})
@@ -89,6 +90,21 @@ def get_user_files(user_id: int) -> Tuple[str, str, str, str]:
     trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
     cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
     return username, portfolio, trade_log, cash_file
+
+
+def user_needs_cash(user_id: int) -> bool:
+    """Return True if the user has no trade history and no starting cash."""
+
+    _, _, trade_log, cash_file = get_user_files(user_id)
+
+    has_trades = False
+    if os.path.exists(trade_log) and os.path.getsize(trade_log) > 0:
+        with open(trade_log, newline='') as f:
+            reader = csv.DictReader(f)
+            has_trades = any(True for _ in reader)
+
+    has_cash = os.path.exists(cash_file) and os.path.getsize(cash_file) > 0
+    return (not has_trades) and (not has_cash)
 def init_db():
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
@@ -201,6 +217,32 @@ def login():
 @token_required
 def protected(user_id):
     return jsonify({'message': 'Protected content', 'user_id': user_id})
+
+
+@app.route('/api/needs-cash')
+@token_required
+def api_needs_cash(user_id):
+    """Check if the user must provide an initial cash balance."""
+    return jsonify({'needs_cash': user_needs_cash(user_id)})
+
+
+@app.route('/api/set-cash', methods=['POST'])
+@token_required
+def api_set_cash(user_id):
+    """Persist a starting cash balance for a user (up to 100k)."""
+
+    data = request.get_json() or {}
+    try:
+        amount = float(data.get('cash', 0))
+    except (TypeError, ValueError):
+        return jsonify({'message': 'Invalid cash amount'}), 400
+    if amount < 0 or amount > 100_000:
+        return jsonify({'message': 'Cash must be between 0 and 100000'}), 400
+
+    _, _, _, cash_file = get_user_files(user_id)
+    with open(cash_file, 'w') as f:
+        f.write(str(round(amount, 2)))
+    return jsonify({'message': 'Cash balance set'})
 
 
 def get_latest_portfolio(user_id: int):
