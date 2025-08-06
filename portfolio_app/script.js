@@ -10,9 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    function showError(message, err) {
+    function showError(message, err, elementId = 'errorMessage') {
         if (err) console.error(err);
-        const el = document.getElementById('errorMessage');
+        const el = document.getElementById(elementId);
         if (el) {
             el.textContent = message;
             el.classList.remove('visually-hidden');
@@ -165,6 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tradeForm) {
         tradeForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const tradeErrorEl = document.getElementById('tradeErrorMessage');
+            if (tradeErrorEl) tradeErrorEl.classList.add('visually-hidden');
             const payload = {
                 ticker: document.getElementById('trade-ticker').value.trim().toUpperCase(),
                 action: document.getElementById('trade-action').value,
@@ -199,14 +201,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             /* ignore */
                         }
                     }
-                    showError(msg);
+                    showError(msg, undefined, 'tradeErrorMessage');
                     return;
                 }
                 tradeForm.reset();
                 await loadPortfolio();
                 await loadTradeLog();
             } catch (err) {
-                showError('Trade failed', err);
+                showError('Trade failed', err, 'tradeErrorMessage');
             }
         });
     }
