@@ -58,8 +58,9 @@ def is_valid_ticker(ticker: str) -> bool:
 def process_portfolio(
     portfolio: pd.DataFrame | dict[str, list[object]] | list[dict[str, object]],
     cash: float,
+    manual_trades: list[dict[str, object]] | None = None,
 ) -> tuple[pd.DataFrame, float]:
-    """Update daily price information, log stop-loss sells, and prompt for trades.
+    """Update daily price information, log stop-loss sells, and log manual trades.
 
     Parameters
     ----------
@@ -70,13 +71,17 @@ def process_portfolio(
         with a single type.
     cash:
         Cash balance available for trading.
+    manual_trades:
+        Optional list of dictionaries describing manual trades. Each dictionary
+        must include an ``action`` key (``"b"`` for buy or ``"s"`` for sell),
+        ``ticker``, ``shares``, and ``price``. Buy trades also require a
+        ``stop_loss`` value.
 
     Returns
     -------
     tuple[pd.DataFrame, float]
         Updated portfolio and cash balance.
     """
-    print(portfolio)
     if isinstance(portfolio, pd.DataFrame):
         portfolio_df = portfolio.copy()
     elif isinstance(portfolio, (dict, list)):
@@ -88,54 +93,40 @@ def process_portfolio(
     total_value = 0.0
     total_pnl = 0.0
 
-    if day == 6 or day == 5:
-        check = input("""Today is currently a weekend, so markets were never open. 
-This will cause the program to calculate data from the last day (usually Friday), and save it as today.
-Are you sure you want to do this? To exit, enter 1. """)
-        if check == "1":
-            raise SystemError("Exitting program...")
+    if day in (5, 6):
+        print(
+            "Warning: processing portfolio on weekend; using last available market data."
+        )
 
-    while True:
-        action = input(
-            f""" You have {cash} in cash.
-Would you like to log a manual trade? Enter 'b' for buy, 's' for sell, or press Enter to continue: """
-        ).strip().lower()
+    for trade in manual_trades or []:
+        action = str(trade.get("action", "")).lower()
+        ticker = str(trade.get("ticker", "")).upper()
+        if not ticker or not is_valid_ticker(ticker):
+            print(f"Invalid ticker '{ticker}'. Manual trade skipped.")
+            continue
+        try:
+            shares = float(trade.get("shares", 0))
+            price = float(trade.get("price", 0))
+            if shares <= 0 or price <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            print("Invalid trade parameters. Manual trade skipped.")
+            continue
+
         if action == "b":
-            ticker = input("Enter ticker symbol: ").strip().upper()
-            if not is_valid_ticker(ticker):
-                print("Invalid ticker. Manual buy cancelled.")
+            stop_loss = float(trade.get("stop_loss", 0))
+            if stop_loss <= 0:
+                print("Invalid stop loss. Manual buy skipped.")
                 continue
-            try:
-                shares = float(input("Enter number of shares: "))
-                buy_price = float(input("Enter buy price: "))
-                stop_loss = float(input("Enter stop loss: "))
-                if shares <= 0 or buy_price <= 0 or stop_loss <= 0:
-                    raise ValueError
-            except ValueError:
-                print("Invalid input. Manual buy cancelled.")
-            else:
-                cash, portfolio_df = log_manual_buy(
-                    buy_price, shares, ticker, stop_loss, cash, portfolio_df
-                )
-            continue
-        if action == "s":
-            ticker = input("Enter ticker symbol: ").strip().upper()
-            if not is_valid_ticker(ticker):
-                print("Invalid ticker. Manual sell cancelled.")
-                continue
-            try:
-                shares = float(input("Enter number of shares to sell: "))
-                sell_price = float(input("Enter sell price: "))
-                if shares <= 0 or sell_price <= 0:
-                    raise ValueError
-            except ValueError:
-                print("Invalid input. Manual sell cancelled.")
-            else:
-                cash, portfolio_df = log_manual_sell(
-                    sell_price, shares, ticker, cash, portfolio_df
-                )
-            continue
-        break
+            cash, portfolio_df = log_manual_buy(
+                price, shares, ticker, stop_loss, cash, portfolio_df
+            )
+        elif action == "s":
+            cash, portfolio_df = log_manual_sell(
+                price, shares, ticker, cash, portfolio_df
+            )
+        else:
+            print("Unknown trade action. Manual trade skipped.")
 
     for _, stock in portfolio_df.iterrows():
         ticker = stock["ticker"]
@@ -261,14 +252,6 @@ def log_manual_buy(
     chatgpt_portfolio: pd.DataFrame,
 ) -> tuple[float, pd.DataFrame]:
     """Log a manual purchase and append to the portfolio."""
-    check = input(
-        f"""You are currently trying to buy {shares} shares of {ticker} with a price of {buy_price} and a stoploss of {stoploss}.
-        If this a mistake, type "1". """
-    )
-    if check == "1":
-        print("Returning...")
-        return cash, chatgpt_portfolio
-
     data = yf.download(ticker, period="1d")
     data = cast(pd.DataFrame, data)
     if data.empty:
@@ -339,14 +322,6 @@ def log_manual_sell(
     chatgpt_portfolio: pd.DataFrame,
 ) -> tuple[float, pd.DataFrame]:
     """Log a manual sale and update the portfolio."""
-    reason = input(
-        f"""You are currently trying to sell {shares_sold} shares of {ticker} at a price of {sell_price}.
-If this is a mistake, enter 1. """
-    )
-
-    if reason == "1":
-        print("Returning...")
-        return cash, chatgpt_portfolio
     if ticker not in chatgpt_portfolio["ticker"].values:
         print(f"Manual sell for {ticker} failed: ticker not in portfolio.")
         return cash, chatgpt_portfolio
@@ -380,7 +355,7 @@ If this is a mistake, enter 1. """
         "Buy Price": "",
         "Cost Basis": cost_basis,
         "PnL": pnl,
-        "Reason": f"MANUAL SELL - {reason}",
+        "Reason": "MANUAL SELL",
         "Shares Sold": shares_sold,
         "Sell Price": sell_price,
     }
@@ -523,20 +498,9 @@ def load_latest_portfolio_state(
     if df.empty:
         portfolio = pd.DataFrame([])
         print(
-            "Portfolio CSV is empty. Returning set amount of cash for creating portfolio."
+            "Portfolio CSV is empty. Starting with a zero cash balance."
         )
-        while True:
-            try:
-                cash = float(
-                    input("What would you like your starting cash amount to be? ")
-                )
-            except ValueError:
-                print("Please enter a valid number.")
-                continue
-            if cash < 0 or cash > 100_000:
-                print("Cash must be between 0 and 100000.")
-                continue
-            break
+        cash = 0.0
         return portfolio, cash
     non_total = df[df["Ticker"] != "TOTAL"].copy()
     non_total["Date"] = pd.to_datetime(non_total["Date"])
