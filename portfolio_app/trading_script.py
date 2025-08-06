@@ -122,6 +122,9 @@ def process_portfolio(
                 price, shares, ticker, stop_loss, cash, portfolio_df
             )
         elif action == "s":
+            if trade.get("stop_loss") not in (None, "", 0):
+                print("Stop loss specified for sell order. Manual trade skipped.")
+                continue
             cash, portfolio_df = log_manual_sell(
                 price, shares, ticker, cash, portfolio_df
             )
