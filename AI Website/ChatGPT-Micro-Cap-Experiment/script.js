@@ -8,12 +8,13 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
 
     async function init() {
-        const hasTrades = await loadTradeLog();
-        if (!hasTrades) {
+        let hasPositions = await loadPortfolio();
+        if (!hasPositions) {
             await checkStartingCash();
+            await loadPortfolio();
         }
         loadEquityHistory();
-        loadPortfolio();
+        loadTradeLog();
     }
 
     async function checkStartingCash() {
@@ -101,8 +102,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.total_equity) {
                 document.getElementById('totalEquity').textContent = `$${data.total_equity}`;
             }
+            return data.positions.length > 0;
         } catch (err) {
             console.error(err);
+            return false;
         }
     }
 
