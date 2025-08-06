@@ -5,6 +5,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = canvas.getContext('2d');
     const token = localStorage.getItem('token');
 
+    function showError(message, err) {
+        if (err) console.error(err);
+        const el = document.getElementById('errorMessage');
+        if (el) {
+            el.textContent = message;
+            el.classList.remove('visually-hidden');
+        } else {
+            alert(message);
+        }
+    }
+
     init();
 
     async function init() {
@@ -32,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     amount = parseFloat(amount);
                 } while (isNaN(amount) || amount < 0 || amount > 100000);
 
-                await fetch('/api/set-cash', {
+                const setRes = await fetch('/api/set-cash', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -40,9 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     body: JSON.stringify({ cash: amount })
                 });
+                if (!setRes.ok) throw new Error('Failed to set starting cash');
             }
         } catch (err) {
-            console.error(err);
+            showError('Failed to check starting cash', err);
         }
     }
 
@@ -55,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             drawChart(data.map(d => parseFloat(d['Total Equity'])));
         } catch (err) {
-            console.error(err);
+            showError('Failed to load equity history', err);
         }
     }
 
@@ -104,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return data.positions.length > 0;
         } catch (err) {
-            console.error(err);
+            showError('Failed to load portfolio', err);
             return false;
         }
     }
@@ -139,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('winRate').textContent = sells ? `${Math.round((wins / sells) * 100)}%` : '0%';
             return data.length > 0;
         } catch (err) {
-            console.error(err);
+            showError('Failed to load trade log', err);
             return false;
         }
     }
@@ -165,15 +177,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify(payload),
                 });
                 if (!res.ok) {
-                    const err = await res.json();
-                    alert(err.message || 'Trade failed');
+                    const errData = await res.json();
+                    showError(errData.message || 'Trade failed');
                     return;
                 }
                 tradeForm.reset();
                 await loadPortfolio();
                 await loadTradeLog();
             } catch (err) {
-                console.error(err);
+                showError('Trade failed', err);
             }
         });
     }

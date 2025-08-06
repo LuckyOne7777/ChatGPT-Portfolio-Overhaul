@@ -28,6 +28,7 @@
     </header>
 
     <main>
+        <div id="errorMessage" class="visually-hidden" role="alert"></div>
         <section id="home">
             <div class="summary-cards">
                 <div class="card">
@@ -47,13 +48,14 @@
 
         <section id="graphs">
             <h2>Portfolio vs Benchmark</h2>
-            <canvas id="portfolioChart" width="800" height="400"></canvas>
+            <canvas id="portfolioChart" width="800" height="400" role="img" aria-label="Portfolio versus benchmark chart"></canvas>
         </section>
 
         <section id="portfolio">
             <h2>Portfolio</h2>
             <div class="table-container">
                 <table>
+                    <caption class="visually-hidden">Current portfolio positions</caption>
                     <thead>
                         <tr>
                             <th>Ticker</th>
@@ -72,14 +74,24 @@
         <section id="trade-form">
             <h2>Place Trade</h2>
             <form id="tradeForm">
+                <label class="visually-hidden" for="trade-ticker">Ticker</label>
                 <input type="text" id="trade-ticker" placeholder="Ticker" required>
+
+                <label class="visually-hidden" for="trade-action">Action</label>
                 <select id="trade-action">
                     <option value="buy">Buy</option>
                     <option value="sell">Sell</option>
                 </select>
+
+                <label class="visually-hidden" for="trade-price">Price</label>
                 <input type="number" step="0.01" id="trade-price" placeholder="Price" required>
+
+                <label class="visually-hidden" for="trade-shares">Shares</label>
                 <input type="number" step="1" id="trade-shares" placeholder="Shares" required>
+
+                <label class="visually-hidden" for="trade-reason">Reason (optional)</label>
                 <input type="text" id="trade-reason" placeholder="Reason (optional)">
+
                 <button type="submit">Submit Trade</button>
             </form>
         </section>
@@ -88,6 +100,7 @@
             <h2>Trade Log</h2>
             <div class="table-container">
                 <table>
+                    <caption class="visually-hidden">Trade history</caption>
                     <thead>
                         <tr>
                             <th>Date</th>

@@ -15,37 +15,47 @@
         <h2>Sign Up</h2>
         <div class="input-group">
             <i class="fas fa-user"></i>
+            <label class="visually-hidden" for="signup-username">Username</label>
             <input type="text" id="signup-username" placeholder="Username" required>
         </div>
         <div class="input-group">
             <i class="fas fa-envelope"></i>
+            <label class="visually-hidden" for="signup-email">Email</label>
             <input type="email" id="signup-email" placeholder="Email" required>
         </div>
         <div class="input-group">
             <i class="fas fa-lock"></i>
+            <label class="visually-hidden" for="signup-password">Password</label>
             <input type="password" id="signup-password" placeholder="Password" required>
         </div>
         <button type="submit">Sign Up</button>
-        <p id="signup-error" class="error-message"></p>
+        <p id="signup-error" class="error-message" role="alert"></p>
     </form>
 </div>
 <script>
 document.getElementById('signup-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const res = await fetch('/register', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            username: document.getElementById('signup-username').value,
-            email: document.getElementById('signup-email').value,
-            password: document.getElementById('signup-password').value
-        })
-    });
-    const data = await res.json();
-    if (res.ok) {
-        window.location.href = '/login';
-    } else {
-        document.getElementById('signup-error').textContent = data.message || 'Registration failed';
+    const errorEl = document.getElementById('signup-error');
+    errorEl.textContent = '';
+    try {
+        const res = await fetch('/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                username: document.getElementById('signup-username').value,
+                email: document.getElementById('signup-email').value,
+                password: document.getElementById('signup-password').value
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            window.location.href = '/login';
+        } else {
+            errorEl.textContent = data.message || 'Registration failed';
+        }
+    } catch (err) {
+        console.error(err);
+        errorEl.textContent = 'Network error';
     }
 });
 </script>
