@@ -1,85 +1,52 @@
-// Simple portfolio vs benchmark chart using Canvas API
-// Generates dummy data and allows timeframe toggling.
+// Render portfolio information for the logged-in user.
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('portfolioChart');
     const ctx = canvas.getContext('2d');
-    const buttons = document.querySelectorAll('.timeframe-buttons button');
+    const token = localStorage.getItem('token');
 
-    // Generate dummy data for different ranges
-    const data = {
-        '1W': generateData(7),
-        '1M': generateData(30),
-        'Max': generateData(100)
-    };
-
-    // Produce simple random walk data for demonstration purposes
-    function generateData(points) {
-        const portfolio = [];
-        const benchmark = [];
-        let p = 100;
-        let b = 100;
-        for (let i = 0; i < points; i++) {
-            p += Math.random() * 4 - 2; // simulate changes
-            b += Math.random() * 3 - 1.5;
-            portfolio.push(p);
-            benchmark.push(b);
-        }
-        return { portfolio, benchmark };
-    }
-
-    // Draw line chart for selected timeframe
-    function drawChart(range) {
-        const { portfolio, benchmark } = data[range];
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const maxVal = Math.max(...portfolio, ...benchmark);
-        const minVal = Math.min(...portfolio, ...benchmark);
-        const xScale = canvas.width / (portfolio.length - 1);
-        const yScale = canvas.height / (maxVal - minVal);
-
-        // Draw portfolio line
-        ctx.beginPath();
-        ctx.strokeStyle = '#007bff';
-        ctx.lineWidth = 2;
-        portfolio.forEach((val, i) => {
-            const x = i * xScale;
-            const y = canvas.height - (val - minVal) * yScale;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        });
-        ctx.stroke();
-
-        // Draw benchmark line
-        ctx.beginPath();
-        ctx.strokeStyle = '#ff5733';
-        benchmark.forEach((val, i) => {
-            const x = i * xScale;
-            const y = canvas.height - (val - minVal) * yScale;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        });
-        ctx.stroke();
-    }
-
-    // Initial chart
-    drawChart('Max');
-
-    // Update chart on timeframe selection
-    buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            buttons.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            drawChart(btn.dataset.range);
-        });
-    });
-
+    loadEquityHistory();
     loadPortfolio();
     loadTradeLog();
 
+    async function loadEquityHistory() {
+        try {
+            const res = await fetch('/api/equity-history', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to load equity history');
+            const data = await res.json();
+            drawChart(data.map(d => parseFloat(d['Total Equity'])));
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function drawChart(values) {
+        if (values.length === 0) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const maxVal = Math.max(...values);
+        const minVal = Math.min(...values);
+        const xScale = canvas.width / (values.length - 1);
+        const yScale = canvas.height / (maxVal - minVal || 1);
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#007bff';
+        ctx.lineWidth = 2;
+        values.forEach((val, i) => {
+            const x = i * xScale;
+            const y = canvas.height - (val - minVal) * yScale;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    }
+
     async function loadPortfolio() {
         try {
-            const res = await fetch('/api/portfolio');
+            const res = await fetch('/api/portfolio', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
             if (!res.ok) throw new Error('Failed to load portfolio');
             const data = await res.json();
             const tbody = document.getElementById('portfolioTableBody');
@@ -105,11 +72,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadTradeLog() {
         try {
-            const res = await fetch('/api/trade-log');
+            const res = await fetch('/api/trade-log', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
             if (!res.ok) throw new Error('Failed to load trade log');
             const data = await res.json();
             const tbody = document.getElementById('tradeLogBody');
             tbody.innerHTML = '';
+            let wins = 0;
+            let sells = 0;
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
@@ -120,8 +91,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${item.Quantity}</td>
                     <td>${item.Reason}</td>`;
                 tbody.appendChild(tr);
+                if (item.Action === 'Sell') {
+                    sells++;
+                    if (parseFloat(item.PnL) > 0) wins++;
+                }
             });
             document.getElementById('numTrades').textContent = data.length;
+            document.getElementById('winRate').textContent = sells ? `${Math.round((wins / sells) * 100)}%` : '0%';
         } catch (err) {
             console.error(err);
         }
