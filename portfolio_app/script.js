@@ -189,9 +189,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     let msg = 'Trade failed';
                     try {
                         const errData = await res.json();
-                        if (errData && errData.message) msg = errData.message;
+                        if (errData && errData.message) {
+                            msg = errData.message;
+                        }
                     } catch (_) {
-                        // Response might not be JSON; keep default message
+                        try {
+                            msg = await res.text();
+                        } catch (_) {
+                            /* ignore */
+                        }
                     }
                     showError(msg);
                     return;
