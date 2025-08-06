@@ -186,12 +186,6 @@ def sample_portfolio_page():
 def serve_sample_portfolio_js():
     return send_from_directory('.', 'sample_portfolio.js')
 
-
-@app.route('/sample-trade-log')
-def sample_trade_log_page():
-    return send_from_directory('templates', 'sample_trade_log.html')
-
-
 @app.route('/sample_trade_log.js')
 def serve_sample_trade_log_js():
     return send_from_directory('.', 'sample_trade_log.js')
