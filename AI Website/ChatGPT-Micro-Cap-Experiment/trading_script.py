@@ -509,12 +509,18 @@ def load_latest_portfolio_state(
         print(
             "Portfolio CSV is empty. Returning set amount of cash for creating portfolio."
         )
-        try:
-            cash = float(input("What would you like your starting cash amount to be? "))
-        except ValueError:
-            raise ValueError(
-                "Cash could not be converted to float datatype. Please enter a valid number."
-            )
+        while True:
+            try:
+                cash = float(
+                    input("What would you like your starting cash amount to be? ")
+                )
+            except ValueError:
+                print("Please enter a valid number.")
+                continue
+            if cash < 0 or cash > 100_000:
+                print("Cash must be between 0 and 100000.")
+                continue
+            break
         return portfolio, cash
     non_total = df[df["Ticker"] != "TOTAL"].copy()
     non_total["Date"] = pd.to_datetime(non_total["Date"])
