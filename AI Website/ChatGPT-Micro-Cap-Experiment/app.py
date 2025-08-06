@@ -198,27 +198,67 @@ def sample_page():
 
 @app.route('/sample_chart.png')
 def sample_chart_png():
-    """Generate a PNG equity history chart for the public sample portfolio."""
-    history = read_sample_equity_history()
-    if not history:
-        return '', 404
+    """Generate the same comparison chart as ``Generate_Graph.py`` as a PNG."""
+    import importlib.util
+    from io import BytesIO
+    from pathlib import Path
+
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    from io import BytesIO
 
-    dates = [datetime.strptime(h['Date'], '%Y-%m-%d') for h in history]
-    equities = [float(h['Total Equity']) for h in history]
+    data_dir = Path(__file__).resolve().parent / 'Scripts and CSV Files'
+    script_path = data_dir / 'Generate_Graph.py'
 
-    fig, ax = plt.subplots()
-    ax.plot(dates, equities)
+    spec = importlib.util.spec_from_file_location('generate_graph', script_path)
+    generate_graph = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generate_graph)
+
+    chatgpt_totals = generate_graph.load_portfolio_details(100.0, None)
+    start_date = chatgpt_totals['Date'].min()
+    end_date = chatgpt_totals['Date'].max()
+    try:
+        sp500 = generate_graph.download_sp500(start_date, end_date)
+    except Exception:
+        return '', 500
+    if sp500.empty:
+        return '', 500
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(
+        chatgpt_totals['Date'],
+        chatgpt_totals['Total Equity'],
+        label='ChatGPT ($100 Invested)',
+        marker='o',
+        color='blue',
+        linewidth=2,
+    )
+    ax.plot(
+        sp500['Date'],
+        sp500['SPX Value ($100 Invested)'],
+        label='S&P 500 ($100 Invested)',
+        marker='o',
+        color='orange',
+        linestyle='--',
+        linewidth=2,
+    )
+
+    final_date = chatgpt_totals['Date'].iloc[-1]
+    final_chatgpt = float(chatgpt_totals['Total Equity'].iloc[-1])
+    final_spx = sp500['SPX Value ($100 Invested)'].iloc[-1]
+    ax.text(final_date, final_chatgpt + 0.3, f"+{final_chatgpt - 100:.1f}%", color='blue', fontsize=9)
+    ax.text(final_date, final_spx + 0.9, f"+{final_spx - 100:.1f}%", color='orange', fontsize=9)
+
+    ax.set_title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
     ax.set_xlabel('Date')
-    ax.set_ylabel('Total Equity')
-    ax.set_title('Sample Equity History')
+    ax.set_ylabel('Value of $100 Investment')
+    ax.legend()
+    ax.grid(True)
     fig.autofmt_xdate()
 
     buf = BytesIO()
-    fig.savefig(buf, format='png')
+    fig.savefig(buf, format='png', bbox_inches='tight')
     plt.close(fig)
     buf.seek(0)
     return send_file(buf, mimetype='image/png')
