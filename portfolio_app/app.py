@@ -8,7 +8,10 @@ import os
 import csv
 from typing import Tuple
 import yfinance as yf
-from trading_script import process_portfolio
+from pathlib import Path
+
+import pandas as pd
+import trading_script as ts
 
 try:  # Optional Streamlit integration for session state
     import streamlit as st
@@ -637,6 +640,50 @@ def get_equity_history(user_id: int):
 @token_required
 def api_equity_history(user_id):
     return jsonify(get_equity_history(user_id))
+
+
+def process_portfolio(user_id: int) -> None:
+    """Process a user's portfolio using the trading script."""
+
+    _, portfolio_csv, trade_log_csv, cash_file = get_user_files(user_id)
+
+    # Ensure trading_script writes to the user's files
+    ts.DATA_DIR = Path(os.path.dirname(portfolio_csv))
+    ts.PORTFOLIO_CSV = Path(portfolio_csv)
+    ts.TRADE_LOG_CSV = Path(trade_log_csv)
+
+    holdings: list[dict[str, float | str]] = []
+    if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
+        with open(portfolio_csv, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get("Ticker") and row["Ticker"] != "TOTAL":
+                    shares = float(row.get("Shares", 0) or 0)
+                    cost_basis = float(row.get("Cost Basis", 0) or 0)
+                    stop_loss = float(row.get("Stop Loss", 0) or 0)
+                    buy_price = cost_basis / shares if shares else 0.0
+                    holdings.append(
+                        {
+                            "ticker": row["Ticker"],
+                            "shares": shares,
+                            "buy_price": buy_price,
+                            "stop_loss": stop_loss,
+                            "cost_basis": cost_basis,
+                        }
+                    )
+
+    portfolio_df = pd.DataFrame(holdings)
+
+    cash = 0.0
+    if os.path.exists(cash_file) and os.path.getsize(cash_file) > 0:
+        with open(cash_file) as f:
+            cash = float(f.read().strip() or 0)
+
+    # Process portfolio and update cash balance
+    _, updated_cash = ts.process_portfolio(portfolio_df, cash)
+
+    with open(cash_file, "w") as f:
+        f.write(str(round(updated_cash, 2)))
 
 
 @app.route('/api/process-portfolio', methods=['POST'])
