@@ -284,6 +284,130 @@ def get_latest_portfolio(user_id: int):
     return positions, total_equity
 
 
+@app.route('/api/trade', methods=['POST'])
+@token_required
+def api_trade(user_id):
+    """Record a buy or sell trade for the logged-in user."""
+    data = request.get_json() or {}
+    ticker = (data.get('ticker') or '').upper()
+    action = (data.get('action') or '').lower()
+    try:
+        price = float(data.get('price', 0))
+        shares = float(data.get('shares', 0))
+    except (TypeError, ValueError):
+        return jsonify({'message': 'Invalid price or shares'}), 400
+    reason = data.get('reason', '')
+    if not ticker or action not in {'buy', 'sell'} or price <= 0 or shares <= 0:
+        return jsonify({'message': 'Invalid trade data'}), 400
+
+    _, portfolio_csv, trade_log_csv, cash_file = get_user_files(user_id)
+
+    cash = 0.0
+    if os.path.exists(cash_file) and os.path.getsize(cash_file) > 0:
+        with open(cash_file) as f:
+            cash = float(f.read().strip() or 0)
+
+    positions: dict[str, dict[str, float]] = {}
+    if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
+        with open(portfolio_csv, newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get('Ticker') and row['Ticker'] != 'TOTAL':
+                    positions[row['Ticker']] = {
+                        'shares': float(row.get('Shares', 0) or 0),
+                        'cost_basis': float(row.get('Cost Basis', 0) or 0),
+                    }
+
+    date = datetime.utcnow().strftime('%Y-%m-%d')
+    if action == 'buy':
+        cost = price * shares
+        if cost > cash:
+            return jsonify({'message': 'Insufficient cash'}), 400
+        pos = positions.setdefault(ticker, {'shares': 0.0, 'cost_basis': 0.0})
+        pos['shares'] += shares
+        pos['cost_basis'] += cost
+        cash -= cost
+        log = {
+            'Date': date,
+            'Ticker': ticker,
+            'Shares Bought': shares,
+            'Buy Price': price,
+            'Cost Basis': cost,
+            'PnL': '',
+            'Reason': reason,
+            'Shares Sold': '',
+            'Sell Price': '',
+        }
+    else:  # sell
+        pos = positions.get(ticker)
+        if not pos or pos['shares'] < shares:
+            return jsonify({'message': 'Not enough shares'}), 400
+        total_shares = pos['shares']
+        cost_basis_per_share = pos['cost_basis'] / total_shares
+        cost_basis = cost_basis_per_share * shares
+        pnl = price * shares - cost_basis
+        pos['shares'] -= shares
+        pos['cost_basis'] -= cost_basis
+        if pos['shares'] == 0:
+            del positions[ticker]
+        cash += price * shares
+        log = {
+            'Date': date,
+            'Ticker': ticker,
+            'Shares Bought': '',
+            'Buy Price': '',
+            'Cost Basis': cost_basis,
+            'PnL': pnl,
+            'Reason': reason,
+            'Shares Sold': shares,
+            'Sell Price': price,
+        }
+
+    file_exists = os.path.exists(trade_log_csv) and os.path.getsize(trade_log_csv) > 0
+    with open(trade_log_csv, 'a', newline='') as f:
+        fieldnames = ['Date', 'Ticker', 'Shares Bought', 'Buy Price', 'Cost Basis', 'PnL', 'Reason', 'Shares Sold', 'Sell Price']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(log)
+
+    with open(cash_file, 'w') as f:
+        f.write(str(round(cash, 2)))
+
+    with open(portfolio_csv, 'w', newline='') as f:
+        fieldnames = ['Date', 'Ticker', 'Shares', 'Cost Basis', 'Stop Loss', 'Current Price', 'Total Value', 'PnL', 'Action', 'Cash Balance', 'Total Equity']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        total_equity = cash
+        for t, info in positions.items():
+            total_equity += info['cost_basis']
+            writer.writerow({
+                'Date': date,
+                'Ticker': t,
+                'Shares': info['shares'],
+                'Cost Basis': info['cost_basis'],
+                'Stop Loss': '',
+                'Current Price': '',
+                'Total Value': '',
+                'PnL': '',
+                'Action': 'BUY' if action == 'buy' and t == ticker else 'HOLD',
+            })
+        writer.writerow({
+            'Date': date,
+            'Ticker': 'TOTAL',
+            'Shares': '',
+            'Cost Basis': '',
+            'Stop Loss': '',
+            'Current Price': '',
+            'Total Value': '',
+            'PnL': '',
+            'Action': '',
+            'Cash Balance': cash,
+            'Total Equity': total_equity,
+        })
+
+    return jsonify({'message': 'Trade recorded', 'cash': cash})
+
 @app.route('/api/portfolio')
 @token_required
 def api_portfolio(user_id):

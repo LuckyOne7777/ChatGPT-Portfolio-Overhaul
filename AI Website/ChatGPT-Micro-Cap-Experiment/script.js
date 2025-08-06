@@ -143,4 +143,38 @@ document.addEventListener('DOMContentLoaded', () => {
             return false;
         }
     }
+
+    const tradeForm = document.getElementById('tradeForm');
+    if (tradeForm) {
+        tradeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                ticker: document.getElementById('trade-ticker').value.trim().toUpperCase(),
+                action: document.getElementById('trade-action').value,
+                price: parseFloat(document.getElementById('trade-price').value),
+                shares: parseFloat(document.getElementById('trade-shares').value),
+                reason: document.getElementById('trade-reason').value.trim(),
+            };
+            try {
+                const res = await fetch('/api/trade', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.message || 'Trade failed');
+                    return;
+                }
+                tradeForm.reset();
+                await loadPortfolio();
+                await loadTradeLog();
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    }
 });

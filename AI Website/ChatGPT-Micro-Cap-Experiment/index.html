@@ -69,6 +69,21 @@
             </div>
         </section>
 
+        <section id="trade-form">
+            <h2>Place Trade</h2>
+            <form id="tradeForm">
+                <input type="text" id="trade-ticker" placeholder="Ticker" required>
+                <select id="trade-action">
+                    <option value="buy">Buy</option>
+                    <option value="sell">Sell</option>
+                </select>
+                <input type="number" step="0.01" id="trade-price" placeholder="Price" required>
+                <input type="number" step="1" id="trade-shares" placeholder="Shares" required>
+                <input type="text" id="trade-reason" placeholder="Reason (optional)">
+                <button type="submit">Submit Trade</button>
+            </form>
+        </section>
+
         <section id="trade-log">
             <h2>Trade Log</h2>
             <div class="table-container">
