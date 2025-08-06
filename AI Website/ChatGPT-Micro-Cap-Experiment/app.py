@@ -11,13 +11,11 @@ app = Flask(__name__, static_folder=None)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'change-this-secret')
 bcrypt = Bcrypt(app)
 
-DATABASE = 'users.db'
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'Scripts and CSV Files')
 PORTFOLIO_CSV = os.path.join(DATA_DIR, 'chatgpt_portfolio_update.csv')
 TRADE_LOG_CSV = os.path.join(DATA_DIR, 'chatgpt_trade_log.csv')
-
+DATABASE = os.path.join(BASE_DIR, 'users.db')
 def init_db():
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
