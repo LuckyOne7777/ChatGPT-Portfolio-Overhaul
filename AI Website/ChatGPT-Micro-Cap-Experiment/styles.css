@@ -1,11 +1,21 @@
+/* Global styles and variables */
+:root {
+    --primary-color: #222;
+    --accent-color: #007bff;
+    --background-color: #f5f5f5;
+    --text-color: #222;
+}
+
 * {
     box-sizing: border-box;
 }
 
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Poppins', Arial, sans-serif;
     margin: 0;
-    line-height: 1.4;
+    line-height: 1.6;
+    background-color: var(--background-color);
+    color: var(--text-color);
 }
 
 header {
@@ -13,9 +23,13 @@ header {
     justify-content: space-between;
     align-items: center;
     padding: 1rem;
-    background-color: #222;
+    background-color: var(--primary-color);
     color: #fff;
     flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 nav ul {
@@ -29,10 +43,18 @@ nav ul {
 nav a {
     color: #fff;
     text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.3s;
 }
 
 nav a:hover {
-    text-decoration: underline;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+main {
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .summary-cards {
@@ -43,10 +65,17 @@ nav a:hover {
 }
 
 .card {
-    background: #f4f4f4;
+    background: #fff;
     padding: 1rem;
     border-radius: 8px;
     text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 #graphs {
@@ -60,13 +89,16 @@ nav a:hover {
 .timeframe-buttons button {
     margin-right: 0.5rem;
     padding: 0.5rem 1rem;
-    border: 1px solid #222;
+    border: 1px solid var(--accent-color);
     background: #fff;
+    border-radius: 4px;
     cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
 }
 
-.timeframe-buttons button.active {
-    background: #222;
+.timeframe-buttons button.active,
+.timeframe-buttons button:hover {
+    background: var(--accent-color);
     color: #fff;
 }
 
@@ -90,11 +122,19 @@ thead {
     background: #eee;
 }
 
+tbody tr:nth-child(odd) {
+    background: #fafafa;
+}
+
+tbody tr:hover {
+    background: #e6f0ff;
+}
+
 .github-button {
     display: inline-block;
     margin-top: 1rem;
     padding: 0.5rem 1rem;
-    background: #222;
+    background: var(--primary-color);
     color: #fff;
     text-decoration: none;
     border-radius: 4px;
@@ -113,4 +153,11 @@ thead {
     header {
         align-items: flex-start;
     }
+}
+
+footer {
+    text-align: center;
+    padding: 1rem;
+    background: var(--primary-color);
+    color: #fff;
 }
