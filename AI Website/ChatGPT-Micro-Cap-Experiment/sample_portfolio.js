@@ -29,35 +29,5 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadEquityChart() {
-        try {
-            const res = await fetch('/api/sample-equity-history');
-            if (!res.ok) throw new Error('Failed to load equity history');
-            const data = await res.json();
-            const ctx = document.getElementById('equityChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: data.map(d => d.Date),
-                    datasets: [{
-                        label: 'Total Equity',
-                        data: data.map(d => parseFloat(d['Total Equity'])),
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        tension: 0.1,
-                    }]
-                },
-                options: {
-                    scales: {
-                        y: { beginAtZero: false }
-                    }
-                }
-            });
-        } catch (err) {
-            console.error(err);
-        }
-    }
-
     loadSamplePortfolio();
-    loadEquityChart();
 });
