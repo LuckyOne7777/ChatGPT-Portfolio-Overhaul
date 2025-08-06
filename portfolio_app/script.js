@@ -194,4 +194,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    const processBtn = document.getElementById('processPortfolioBtn');
+    if (processBtn) {
+        processBtn.addEventListener('click', async () => {
+            try {
+                const res = await fetch('/api/process-portfolio', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!res.ok) throw new Error('Failed to process portfolio');
+                alert('Portfolio processed successfully');
+                await loadPortfolio();
+            } catch (err) {
+                showError('Failed to process portfolio', err);
+            }
+        });
+    }
 });
