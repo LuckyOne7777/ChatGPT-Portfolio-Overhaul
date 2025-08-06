@@ -44,6 +44,16 @@ now = datetime.now()
 day = now.weekday()
 
 
+def is_valid_ticker(ticker: str) -> bool:
+    """Return True if ``ticker`` has market data via yfinance."""
+
+    try:
+        data = yf.Ticker(ticker).history(period="1d")
+        return not data.empty
+    except Exception:
+        return False
+
+
 
 def process_portfolio(
     portfolio: pd.DataFrame | dict[str, list[object]] | list[dict[str, object]],
@@ -91,8 +101,11 @@ Are you sure you want to do this? To exit, enter 1. """)
 Would you like to log a manual trade? Enter 'b' for buy, 's' for sell, or press Enter to continue: """
         ).strip().lower()
         if action == "b":
+            ticker = input("Enter ticker symbol: ").strip().upper()
+            if not is_valid_ticker(ticker):
+                print("Invalid ticker. Manual buy cancelled.")
+                continue
             try:
-                ticker = input("Enter ticker symbol: ").strip().upper()
                 shares = float(input("Enter number of shares: "))
                 buy_price = float(input("Enter buy price: "))
                 stop_loss = float(input("Enter stop loss: "))
@@ -106,8 +119,11 @@ Would you like to log a manual trade? Enter 'b' for buy, 's' for sell, or press 
                 )
             continue
         if action == "s":
+            ticker = input("Enter ticker symbol: ").strip().upper()
+            if not is_valid_ticker(ticker):
+                print("Invalid ticker. Manual sell cancelled.")
+                continue
             try:
-                ticker = input("Enter ticker symbol: ").strip().upper()
                 shares = float(input("Enter number of shares to sell: "))
                 sell_price = float(input("Enter sell price: "))
                 if shares <= 0 or sell_price <= 0:

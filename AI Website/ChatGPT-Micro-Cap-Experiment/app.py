@@ -7,6 +7,7 @@ from functools import wraps
 import os
 import csv
 from typing import Tuple
+import yfinance as yf
 
 try:  # Optional Streamlit integration for session state
     import streamlit as st
@@ -105,6 +106,18 @@ def user_needs_cash(user_id: int) -> bool:
 
     has_cash = os.path.exists(cash_file) and os.path.getsize(cash_file) > 0
     return (not has_trades) and (not has_cash)
+
+
+def is_valid_ticker(ticker: str) -> bool:
+    """Return True if ``ticker`` has market data via yfinance."""
+
+    try:
+        data = yf.Ticker(ticker).history(period="1d")
+        return not data.empty
+    except Exception:
+        return False
+
+
 def init_db():
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
@@ -299,6 +312,8 @@ def api_trade(user_id):
     reason = data.get('reason', '')
     if not ticker or action not in {'buy', 'sell'} or price <= 0 or shares <= 0:
         return jsonify({'message': 'Invalid trade data'}), 400
+    if not is_valid_ticker(ticker):
+        return jsonify({'message': 'Invalid ticker'}), 400
 
     _, portfolio_csv, trade_log_csv, cash_file = get_user_files(user_id)
 
