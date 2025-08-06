@@ -38,7 +38,7 @@ So, starting with just $100, I wanted to answer a simple but powerful question:
 
 ---
 
-![Week 4 Performance](%286-30%20-%207-25%29%20Results.png)
+![Week 4 Performance](portfolio_app/week4_performance.png)
 
 ---
 - Currently stomping on the Russell 2K.
@@ -75,7 +75,7 @@ ChatGPT for decision-making
 To run the scripts locally, install the Python dependencies:
 
 ```
-pip install -r requirements.txt
+pip install -r portfolio_app/requirements.txt
 ```
 
 # Follow Along
