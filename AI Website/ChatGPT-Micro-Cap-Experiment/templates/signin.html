@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sign In - Portfolio</title>
+    <title>Sign Up - Portfolio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
@@ -11,37 +11,41 @@
 </head>
 <body>
 <div class="login-container">
-    <form id="signin-form">
-        <h2>Sign In</h2>
+    <form id="signup-form">
+        <h2>Sign Up</h2>
         <div class="input-group">
             <i class="fas fa-user"></i>
-            <input type="text" id="signin-username" placeholder="Username" required>
+            <input type="text" id="signup-username" placeholder="Username" required>
+        </div>
+        <div class="input-group">
+            <i class="fas fa-envelope"></i>
+            <input type="email" id="signup-email" placeholder="Email" required>
         </div>
         <div class="input-group">
             <i class="fas fa-lock"></i>
-            <input type="password" id="signin-password" placeholder="Password" required>
+            <input type="password" id="signup-password" placeholder="Password" required>
         </div>
-        <button type="submit">Sign In</button>
-        <p id="signin-error" class="error-message"></p>
+        <button type="submit">Sign Up</button>
+        <p id="signup-error" class="error-message"></p>
     </form>
 </div>
 <script>
-document.getElementById('signin-form').addEventListener('submit', async e => {
+document.getElementById('signup-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const res = await fetch('/login', {
+    const res = await fetch('/register', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            username: document.getElementById('signin-username').value,
-            password: document.getElementById('signin-password').value
+            username: document.getElementById('signup-username').value,
+            email: document.getElementById('signup-email').value,
+            password: document.getElementById('signup-password').value
         })
     });
     const data = await res.json();
     if (res.ok) {
-        localStorage.setItem('token', data.token);
-        window.location.href = '/dashboard';
+        window.location.href = '/login';
     } else {
-        document.getElementById('signin-error').textContent = data.message || 'Login failed';
+        document.getElementById('signup-error').textContent = data.message || 'Registration failed';
     }
 });
 </script>
