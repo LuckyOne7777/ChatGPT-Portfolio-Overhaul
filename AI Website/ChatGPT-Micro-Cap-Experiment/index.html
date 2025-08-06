@@ -32,38 +32,21 @@
             <div class="summary-cards">
                 <div class="card">
                     <h3>Current Total Equity</h3>
-                    <p id="totalEquity">$100,000</p>
-                </div>
-                <div class="card">
-                    <h3>Benchmark (S&P 500) Comparison</h3>
-                    <p id="benchmarkComparison">+2.5%</p>
-                </div>
-                <div class="card">
-                    <h3>Sharpe Ratio</h3>
-                    <p id="sharpeRatio">1.4</p>
-                </div>
-                <div class="card">
-                    <h3>Sortino Ratio</h3>
-                    <p id="sortinoRatio">1.7</p>
+                    <p id="totalEquity">--</p>
                 </div>
                 <div class="card">
                     <h3>Number of Trades</h3>
-                    <p id="numTrades">42</p>
+                    <p id="numTrades">0</p>
                 </div>
                 <div class="card">
                     <h3>Win Rate</h3>
-                    <p id="winRate">60%</p>
+                    <p id="winRate">0%</p>
                 </div>
             </div>
         </section>
 
         <section id="graphs">
             <h2>Portfolio vs Benchmark</h2>
-            <div class="timeframe-buttons">
-                <button data-range="1W">1W</button>
-                <button data-range="1M">1M</button>
-                <button data-range="Max" class="active">Max</button>
-            </div>
             <canvas id="portfolioChart" width="800" height="400"></canvas>
         </section>
 
@@ -81,17 +64,7 @@
                             <th>Stop Loss</th>
                         </tr>
                     </thead>
-                    <tbody id="portfolioTableBody">
-                        <tr>
-                            <td>ABC</td>
-                            <td>100</td>
-                            <td>$10.00</td>
-                            <td>$12.00</td>
-                            <td>$200</td>
-                            <td>$9.00</td>
-                        </tr>
-                        <!-- Additional rows can be added here -->
-                    </tbody>
+                    <tbody id="portfolioTableBody"></tbody>
                 </table>
             </div>
         </section>
@@ -110,17 +83,7 @@
                             <th>Reason</th>
                         </tr>
                     </thead>
-                    <tbody id="tradeLogBody">
-                        <tr>
-                            <td>2024-01-01</td>
-                            <td>ABC</td>
-                            <td>Buy</td>
-                            <td>$10.00</td>
-                            <td>100</td>
-                            <td>Oversold conditions</td>
-                        </tr>
-                        <!-- Additional rows can be added here -->
-                    </tbody>
+                    <tbody id="tradeLogBody"></tbody>
                 </table>
             </div>
         </section>

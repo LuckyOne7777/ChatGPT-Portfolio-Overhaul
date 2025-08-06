@@ -6,6 +6,12 @@ from datetime import datetime, timedelta
 from functools import wraps
 import os
 import csv
+from typing import Tuple
+
+try:  # Optional Streamlit integration for session state
+    import streamlit as st
+except Exception:  # pragma: no cover - streamlit is optional
+    st = None
 
 app = Flask(__name__, static_folder=None)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'change-this-secret')
@@ -13,9 +19,76 @@ bcrypt = Bcrypt(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'Scripts and CSV Files')
-PORTFOLIO_CSV = os.path.join(DATA_DIR, 'chatgpt_portfolio_update.csv')
-TRADE_LOG_CSV = os.path.join(DATA_DIR, 'chatgpt_trade_log.csv')
 DATABASE = os.path.join(BASE_DIR, 'users.db')
+
+
+def ensure_user_files(username: str) -> Tuple[str, str, str]:
+    """Create per-user portfolio, trade log, and cash files if missing."""
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    portfolio = os.path.join(DATA_DIR, f"{username}_portfolio.csv")
+    trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
+    cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
+
+    if not os.path.exists(portfolio):
+        with open(portfolio, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                'Date',
+                'Ticker',
+                'Shares',
+                'Cost Basis',
+                'Stop Loss',
+                'Current Price',
+                'Total Value',
+                'PnL',
+                'Action',
+                'Cash Balance',
+                'Total Equity',
+            ])
+
+    if not os.path.exists(trade_log):
+        with open(trade_log, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                'Date',
+                'Ticker',
+                'Shares Bought',
+                'Buy Price',
+                'Cost Basis',
+                'PnL',
+                'Reason',
+                'Shares Sold',
+                'Sell Price',
+            ])
+
+    if not os.path.exists(cash_file):
+        with open(cash_file, 'w') as f:
+            f.write('100')
+
+    if st is not None:
+        st.session_state.setdefault(username, {})
+        st.session_state[username]['cash_file'] = cash_file
+
+    return portfolio, trade_log, cash_file
+
+
+def get_user_files(user_id: int) -> Tuple[str, str, str, str]:
+    """Return username and related data file paths for a user."""
+
+    with sqlite3.connect(DATABASE) as conn:
+        c = conn.cursor()
+        c.execute('SELECT username FROM users WHERE id=?', (user_id,))
+        row = c.fetchone()
+
+    if not row:
+        raise ValueError('User not found')
+
+    username = row[0]
+    portfolio = os.path.join(DATA_DIR, f"{username}_portfolio.csv")
+    trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
+    cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
+    return username, portfolio, trade_log, cash_file
 def init_db():
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
@@ -110,12 +183,16 @@ def login():
     password = data.get('password')
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
-        c.execute('SELECT id, password FROM users WHERE username=? OR email=?',
+        c.execute('SELECT id, username, password FROM users WHERE username=? OR email=?',
                   (identifier, identifier))
         row = c.fetchone()
-    if row and bcrypt.check_password_hash(row[1], password):
-        token = jwt.encode({'id': row[0], 'exp': datetime.utcnow() + timedelta(hours=1)},
-                           app.config['SECRET_KEY'], algorithm='HS256')
+    if row and bcrypt.check_password_hash(row[2], password):
+        ensure_user_files(row[1])
+        token = jwt.encode(
+            {'id': row[0], 'exp': datetime.utcnow() + timedelta(hours=1)},
+            app.config['SECRET_KEY'],
+            algorithm='HS256',
+        )
         return jsonify({'token': token})
     return jsonify({'message': 'Invalid credentials'}), 401
 
@@ -126,11 +203,24 @@ def protected(user_id):
     return jsonify({'message': 'Protected content', 'user_id': user_id})
 
 
-def get_latest_portfolio():
-    with open(PORTFOLIO_CSV, newline='') as f:
+def get_latest_portfolio(user_id: int):
+    _, portfolio_csv, _, cash_file = get_user_files(user_id)
+    if not os.path.exists(portfolio_csv) or os.path.getsize(portfolio_csv) == 0:
+        cash = '0'
+        if os.path.exists(cash_file):
+            with open(cash_file) as f:
+                cash = f.read().strip() or '0'
+        return [], cash
+
+    with open(portfolio_csv, newline='') as f:
         rows = list(csv.DictReader(f))
-    latest_date = max(row['Date'] for row in rows if row['Ticker'] != 'TOTAL')
-    positions = []
+
+    if not rows:
+        return [], '0'
+
+    non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
+    latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
+    positions: list[dict[str, str]] = []
     total_equity = None
     for row in rows:
         if row['Date'] == latest_date and row['Ticker'] != 'TOTAL':
@@ -140,21 +230,31 @@ def get_latest_portfolio():
                 'Cost_Basis': row['Cost Basis'],
                 'Current_Price': row['Current Price'],
                 'PnL': row['PnL'],
-                'Stop_Loss': row['Stop Loss']
+                'Stop_Loss': row['Stop Loss'],
             })
         elif row['Date'] == latest_date and row['Ticker'] == 'TOTAL':
-            total_equity = row.get('Total Equity')
+            total_equity = row.get('Total Equity') or row.get('Cash Balance')
+
+    if total_equity is None and os.path.exists(cash_file):
+        with open(cash_file) as f:
+            total_equity = f.read().strip() or '0'
+
     return positions, total_equity
 
 
 @app.route('/api/portfolio')
-def api_portfolio():
-    positions, total_equity = get_latest_portfolio()
+@token_required
+def api_portfolio(user_id):
+    positions, total_equity = get_latest_portfolio(user_id)
     return jsonify({'positions': positions, 'total_equity': total_equity})
 
 
-def read_trade_log():
-    with open(TRADE_LOG_CSV, newline='') as f:
+def read_trade_log(user_id: int):
+    _, _, trade_log_csv, _ = get_user_files(user_id)
+    if not os.path.exists(trade_log_csv) or os.path.getsize(trade_log_csv) == 0:
+        return []
+
+    with open(trade_log_csv, newline='') as f:
         reader = csv.DictReader(f)
         entries = []
         for row in reader:
@@ -172,14 +272,39 @@ def read_trade_log():
                 'Action': action,
                 'Price': price,
                 'Quantity': quantity,
-                'Reason': row.get('Reason')
+                'Reason': row.get('Reason'),
+                'PnL': row.get('PnL'),
             })
     return entries
 
 
 @app.route('/api/trade-log')
-def api_trade_log():
-    return jsonify(read_trade_log())
+@token_required
+def api_trade_log(user_id):
+    return jsonify(read_trade_log(user_id))
+
+
+def get_equity_history(user_id: int):
+    _, portfolio_csv, _, cash_file = get_user_files(user_id)
+    history = []
+    if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
+        with open(portfolio_csv, newline='') as f:
+            for row in csv.DictReader(f):
+                if row['Ticker'] == 'TOTAL':
+                    history.append({'Date': row['Date'], 'Total Equity': row.get('Total Equity')})
+    else:
+        cash = '0'
+        if os.path.exists(cash_file):
+            with open(cash_file) as f:
+                cash = f.read().strip() or '0'
+        history.append({'Date': datetime.today().strftime('%Y-%m-%d'), 'Total Equity': cash})
+    return history
+
+
+@app.route('/api/equity-history')
+@token_required
+def api_equity_history(user_id):
+    return jsonify(get_equity_history(user_id))
 
 
 if __name__ == '__main__':
