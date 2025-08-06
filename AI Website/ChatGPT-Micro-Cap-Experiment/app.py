@@ -107,11 +107,13 @@ def signin_page():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json() or {}
-    username = data.get('username')
+    # Allow users to log in with either their username or email.
+    identifier = data.get('identifier') or data.get('username')
     password = data.get('password')
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
-        c.execute('SELECT id, password FROM users WHERE username=?', (username,))
+        c.execute('SELECT id, password FROM users WHERE username=? OR email=?',
+                  (identifier, identifier))
         row = c.fetchone()
     if row and bcrypt.check_password_hash(row[1], password):
         token = jwt.encode({'id': row[0], 'exp': datetime.utcnow() + timedelta(hours=1)},

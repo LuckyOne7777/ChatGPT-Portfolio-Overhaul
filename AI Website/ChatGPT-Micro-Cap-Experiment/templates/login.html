@@ -15,7 +15,7 @@
         <h2>Login</h2>
         <div class="input-group">
             <i class="fas fa-user"></i>
-            <input type="text" id="login-username" placeholder="Username" required>
+            <input type="text" id="login-identifier" placeholder="Username or Email" required>
         </div>
         <div class="input-group">
             <i class="fas fa-lock"></i>
@@ -32,7 +32,7 @@ document.getElementById('login-form').addEventListener('submit', async e => {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            username: document.getElementById('login-username').value,
+            identifier: document.getElementById('login-identifier').value,
             password: document.getElementById('login-password').value
         })
     });
