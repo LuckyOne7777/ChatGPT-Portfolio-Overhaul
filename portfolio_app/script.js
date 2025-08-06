@@ -5,6 +5,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = canvas.getContext('2d');
     const token = localStorage.getItem('token');
 
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+
     function showError(message, err) {
         if (err) console.error(err);
         const el = document.getElementById('errorMessage');
