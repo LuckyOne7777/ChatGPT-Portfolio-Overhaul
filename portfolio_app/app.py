@@ -327,9 +327,32 @@ def user_chart_png(user_id):
 
     chatgpt_totals = generate_graph.load_portfolio_details(baseline_equity, None, None)
 
-    sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
-    if sp500.empty:
-        return jsonify({'message': 'No benchmark data'}), 404
+    try:
+        sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
+        if sp500.empty:
+            raise ValueError('No benchmark data')
+    except Exception:
+        plt.style.use('seaborn-v0_8-whitegrid')
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(
+            chatgpt_totals['Date'],
+            chatgpt_totals['Total Equity'],
+            label=f'{username} (${baseline_equity:.0f} Invested)',
+            marker='o',
+            color='blue',
+            linewidth=2,
+        )
+        ax.set_title('Portfolio Performance')
+        ax.set_xlabel('Date')
+        ax.set_ylabel(f'Value of ${baseline_equity:.0f} Investment')
+        ax.legend()
+        ax.grid(True)
+        fig.autofmt_xdate()
+        buf = BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return send_file(buf, mimetype='image/png')
 
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(10, 6))
