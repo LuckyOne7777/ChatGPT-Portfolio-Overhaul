@@ -245,13 +245,14 @@ def sample_chart_png():
     generate_graph = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(generate_graph)
 
-    chatgpt_totals = generate_graph.load_portfolio_details(100.0, None)
+    baseline_equity = 100.0
+    chatgpt_totals = generate_graph.load_portfolio_details(baseline_equity, None, None)
     start_date = chatgpt_totals['Date'].min()
     end_date = chatgpt_totals['Date'].max()
 
     fallback = Path(__file__).resolve().parent / 'week4_performance.png'
     try:
-        sp500 = generate_graph.download_sp500(start_date, end_date)
+        sp500 = generate_graph.download_sp500(start_date, end_date, baseline_equity)
         if sp500.empty:
             raise ValueError('Empty SP500 data')
     except Exception:
@@ -263,15 +264,15 @@ def sample_chart_png():
     ax.plot(
         chatgpt_totals['Date'],
         chatgpt_totals['Total Equity'],
-        label='ChatGPT ($100 Invested)',
+        label=f'ChatGPT (${baseline_equity:.0f} Invested)',
         marker='o',
         color='blue',
         linewidth=2,
     )
     ax.plot(
         sp500['Date'],
-        sp500['SPX Value ($100 Invested)'],
-        label='S&P 500 ($100 Invested)',
+        sp500['SPX Value'],
+        label=f'S&P 500 (${baseline_equity:.0f} Invested)',
         marker='o',
         color='orange',
         linestyle='--',
@@ -280,13 +281,13 @@ def sample_chart_png():
 
     final_date = chatgpt_totals['Date'].iloc[-1]
     final_chatgpt = float(chatgpt_totals['Total Equity'].iloc[-1])
-    final_spx = sp500['SPX Value ($100 Invested)'].iloc[-1]
-    ax.text(final_date, final_chatgpt + 0.3, f"+{final_chatgpt - 100:.1f}%", color='blue', fontsize=9)
-    ax.text(final_date, final_spx + 0.9, f"+{final_spx - 100:.1f}%", color='orange', fontsize=9)
+    final_spx = float(sp500['SPX Value'].iloc[-1])
+    ax.text(final_date, final_chatgpt + 0.3, f"+{final_chatgpt - baseline_equity:.1f}%", color='blue', fontsize=9)
+    ax.text(final_date, final_spx + 0.9, f"+{final_spx - baseline_equity:.1f}%", color='orange', fontsize=9)
 
     ax.set_title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
     ax.set_xlabel('Date')
-    ax.set_ylabel('Value of $100 Investment')
+    ax.set_ylabel(f'Value of ${baseline_equity:.0f} Investment')
     ax.legend()
     ax.grid(True)
     fig.autofmt_xdate()
