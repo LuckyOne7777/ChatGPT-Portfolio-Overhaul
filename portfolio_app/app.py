@@ -299,6 +299,82 @@ def sample_chart_png():
     return send_file(buf, mimetype='image/png')
 
 
+@app.route('/api/equity-chart.png')
+@token_required
+def user_chart_png(user_id):
+    """Return the user's portfolio vs S&P 500 chart as a PNG."""
+    import importlib.util
+    from io import BytesIO
+    from pathlib import Path
+
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    username, portfolio_csv, _trade_log, _cash_file, starting_equity_file = get_user_files(user_id)
+
+    try:
+        with open(starting_equity_file) as f:
+            baseline_equity = float(f.read().strip())
+    except Exception:
+        baseline_equity = 100.0
+
+    script_path = Path(__file__).resolve().parent / 'Scripts and CSV Files' / 'Generate_Graph.py'
+
+    spec = importlib.util.spec_from_file_location('generate_graph', script_path)
+    generate_graph = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generate_graph)
+
+    generate_graph.PORTFOLIO_CSV = Path(portfolio_csv)
+
+    chatgpt_totals = generate_graph.load_portfolio_details(baseline_equity, None, None)
+    start_date = chatgpt_totals['Date'].min()
+    end_date = chatgpt_totals['Date'].max()
+
+    sp500 = generate_graph.download_sp500(start_date, end_date, baseline_equity)
+    if sp500.empty:
+        return jsonify({'message': 'No benchmark data'}), 404
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(
+        chatgpt_totals['Date'],
+        chatgpt_totals['Total Equity'],
+        label=f'{username} (${baseline_equity:.0f} Invested)',
+        marker='o',
+        color='blue',
+        linewidth=2,
+    )
+    ax.plot(
+        sp500['Date'],
+        sp500['SPX Value'],
+        label=f'S&P 500 (${baseline_equity:.0f} Invested)',
+        marker='o',
+        color='orange',
+        linestyle='--',
+        linewidth=2,
+    )
+
+    final_date = chatgpt_totals['Date'].iloc[-1]
+    final_chatgpt = float(chatgpt_totals['Total Equity'].iloc[-1])
+    final_spx = float(sp500['SPX Value'].iloc[-1])
+    ax.text(final_date, final_chatgpt + 0.3, f"+{final_chatgpt - baseline_equity:.1f}%", color='blue', fontsize=9)
+    ax.text(final_date, final_spx + 0.9, f"+{final_spx - baseline_equity:.1f}%", color='orange', fontsize=9)
+
+    ax.set_title("Portfolio vs. S&P 500")
+    ax.set_xlabel('Date')
+    ax.set_ylabel(f'Value of ${baseline_equity:.0f} Investment')
+    ax.legend()
+    ax.grid(True)
+    fig.autofmt_xdate()
+
+    buf = BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png')
+
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json() or {}

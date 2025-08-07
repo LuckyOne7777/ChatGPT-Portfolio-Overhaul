@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await checkStartingCash();
         await loadPortfolio();
         loadTradeLog();
+        loadEquityChart();
     }
 
     async function checkStartingCash() {
@@ -140,6 +141,21 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             showError('Failed to load trade log', err);
             return false;
+        }
+    }
+
+    async function loadEquityChart() {
+        const chart = document.getElementById('equityChart');
+        if (!chart) return;
+        try {
+            const res = await fetch('/api/equity-chart.png', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to load equity chart');
+            const blob = await res.blob();
+            chart.src = URL.createObjectURL(blob);
+        } catch (err) {
+            showError('Failed to load equity chart', err);
         }
     }
 
