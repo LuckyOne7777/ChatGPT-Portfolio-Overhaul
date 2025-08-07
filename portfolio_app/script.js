@@ -205,6 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tradeForm.reset();
                 await loadPortfolio();
                 await loadTradeLog();
+                await loadEquityChart();
             } catch (err) {
                 showError('Trade failed', err, 'tradeErrorMessage');
             }
@@ -222,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!res.ok) throw new Error('Failed to process portfolio');
                 alert('Portfolio processed successfully');
                 await loadPortfolio();
+                await loadEquityChart();
             } catch (err) {
                 showError('Failed to process portfolio', err);
             }
