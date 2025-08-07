@@ -30,18 +30,22 @@ SAMPLE_PORTFOLIO = os.path.join(DATA_DIR, 'chatgpt_portfolio.csv')
 SAMPLE_TRADE_LOG = os.path.join(DATA_DIR, 'chatgpt_trade_log.csv')
 
 
-def ensure_user_files(username: str) -> Tuple[str, str, str]:
-    """Create per-user portfolio, trade log, and cash files if missing."""
+def ensure_user_files(username: str) -> Tuple[str, str, str, str]:
+    """Create per-user portfolio, trade log, cash, and starting equity files if missing."""
 
     os.makedirs(DATA_DIR, exist_ok=True)
     portfolio = os.path.join(DATA_DIR, f"{username}_portfolio.csv")
     trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
     cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
+    starting_equity_file = os.path.join(DATA_DIR, f"{username}_starting_equity.txt")
 
     portfolio_missing = not os.path.exists(portfolio)
     trade_log_missing = not os.path.exists(trade_log)
     cash_missing_or_empty = not (
         os.path.exists(cash_file) and os.path.getsize(cash_file) > 0
+    )
+    starting_equity_missing_or_empty = not (
+        os.path.exists(starting_equity_file) and os.path.getsize(starting_equity_file) > 0
     )
 
     if portfolio_missing:
@@ -76,19 +80,33 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
                 'Sell Price',
             ])
 
-    if cash_missing_or_empty or portfolio_missing or trade_log_missing:
-        # Reset cash if any of the data files were missing or the cash file is
-        # empty so that a new starting balance can be provided.
+    if starting_equity_missing_or_empty and not cash_missing_or_empty:
+        # Preserve existing cash as the starting equity if it exists.
+        with open(cash_file) as src, open(starting_equity_file, 'w') as dst:
+            dst.write(src.read().strip())
+        starting_equity_missing_or_empty = False
+
+    if (
+        cash_missing_or_empty
+        or portfolio_missing
+        or trade_log_missing
+        or starting_equity_missing_or_empty
+    ):
+        # Reset cash and starting equity if any data files were missing or the
+        # cash/starting equity files are empty so a new starting balance can be
+        # provided.
         open(cash_file, 'w').close()
+        open(starting_equity_file, 'w').close()
 
     if st is not None:
         st.session_state.setdefault(username, {})
         st.session_state[username]['cash_file'] = cash_file
+        st.session_state[username]['starting_equity_file'] = starting_equity_file
 
-    return portfolio, trade_log, cash_file
+    return portfolio, trade_log, cash_file, starting_equity_file
 
 
-def get_user_files(user_id: int) -> Tuple[str, str, str, str]:
+def get_user_files(user_id: int) -> Tuple[str, str, str, str, str]:
     """Return username and related data file paths for a user."""
 
     with sqlite3.connect(DATABASE) as conn:
@@ -103,7 +121,8 @@ def get_user_files(user_id: int) -> Tuple[str, str, str, str]:
     portfolio = os.path.join(DATA_DIR, f"{username}_portfolio.csv")
     trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
     cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
-    return username, portfolio, trade_log, cash_file
+    starting_equity_file = os.path.join(DATA_DIR, f"{username}_starting_equity.txt")
+    return username, portfolio, trade_log, cash_file, starting_equity_file
 
 
 def user_needs_cash(user_id: int) -> bool:
@@ -115,9 +134,12 @@ def user_needs_cash(user_id: int) -> bool:
     page load.
     """
 
-    username, _, _, _ = get_user_files(user_id)
-    _, _, cash_file = ensure_user_files(username)
-    return not (os.path.exists(cash_file) and os.path.getsize(cash_file) > 0)
+    username, _, _, _, _ = get_user_files(user_id)
+    _, _, cash_file, starting_equity_file = ensure_user_files(username)
+    return not (
+        os.path.exists(starting_equity_file)
+        and os.path.getsize(starting_equity_file) > 0
+    )
 
 
 def is_valid_ticker(ticker: str) -> bool:
@@ -354,20 +376,26 @@ def api_set_cash(user_id):
     if amount < 0 or amount > 10_000:
         return jsonify({'message': 'Cash must be between 0 and 10000'}), 400
 
-    _, _, _, cash_file = get_user_files(user_id)
+    _, _, _, cash_file, starting_equity_file = get_user_files(user_id)
     with open(cash_file, 'w') as f:
+        f.write(str(round(amount, 2)))
+    with open(starting_equity_file, 'w') as f:
         f.write(str(round(amount, 2)))
     return jsonify({'message': 'Cash balance set'})
 
 
 def get_latest_portfolio(user_id: int):
-    _, portfolio_csv, _, cash_file = get_user_files(user_id)
+    _, portfolio_csv, _, cash_file, starting_equity_file = get_user_files(user_id)
+    starting_capital = None
+    if os.path.exists(starting_equity_file) and os.path.getsize(starting_equity_file) > 0:
+        with open(starting_equity_file) as f:
+            starting_capital = f.read().strip() or None
     if not os.path.exists(portfolio_csv) or os.path.getsize(portfolio_csv) == 0:
         cash = '0'
         if os.path.exists(cash_file):
             with open(cash_file) as f:
                 cash = f.read().strip() or '0'
-        return [], cash, '0', cash, cash
+        return [], cash, '0', cash, starting_capital or cash
 
     with open(portfolio_csv, newline='') as f:
         rows = list(csv.DictReader(f))
@@ -377,21 +405,21 @@ def get_latest_portfolio(user_id: int):
         if os.path.exists(cash_file):
             with open(cash_file) as f:
                 cash = f.read().strip() or '0'
-        return [], cash, '0', cash, cash
+        return [], cash, '0', cash, starting_capital or cash
 
-    # Determine the earliest recorded equity to use as the starting capital.
-    # Some portfolio CSVs may not be sorted chronologically, so simply taking
-    # the first ``TOTAL`` row can yield the most recent value which causes a
-    # 0% change calculation. To avoid this, select the ``TOTAL`` entry with the
-    # earliest date.
-    starting_capital = None
-    total_rows = [r for r in rows if r.get('Ticker') == 'TOTAL']
-    if total_rows:
-        earliest_total = min(total_rows, key=lambda r: r.get('Date', ''))
-        starting_capital = (
-            earliest_total.get('Total Equity')
-            or earliest_total.get('Cash Balance')
-        )
+    if starting_capital is None:
+        # Determine the earliest recorded equity to use as the starting capital.
+        # Some portfolio CSVs may not be sorted chronologically, so simply taking
+        # the first ``TOTAL`` row can yield the most recent value which causes a
+        # 0% change calculation. To avoid this, select the ``TOTAL`` entry with the
+        # earliest date.
+        total_rows = [r for r in rows if r.get('Ticker') == 'TOTAL']
+        if total_rows:
+            earliest_total = min(total_rows, key=lambda r: r.get('Date', ''))
+            starting_capital = (
+                earliest_total.get('Total Equity')
+                or earliest_total.get('Cash Balance')
+            )
 
     non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
@@ -529,7 +557,7 @@ def api_trade(user_id):
     if not is_valid_ticker(ticker):
         return jsonify({'message': 'Invalid ticker'}), 400
 
-    _, portfolio_csv, trade_log_csv, cash_file = get_user_files(user_id)
+    _, portfolio_csv, trade_log_csv, cash_file, _ = get_user_files(user_id)
 
     cash = 0.0
     if os.path.exists(cash_file) and os.path.getsize(cash_file) > 0:
@@ -669,7 +697,7 @@ def api_portfolio(user_id):
 
 
 def read_trade_log(user_id: int):
-    _, _, trade_log_csv, _ = get_user_files(user_id)
+    _, _, trade_log_csv, _, _ = get_user_files(user_id)
     if not os.path.exists(trade_log_csv) or os.path.getsize(trade_log_csv) == 0:
         return []
 
@@ -704,7 +732,7 @@ def api_trade_log(user_id):
 
 
 def get_equity_history(user_id: int):
-    _, portfolio_csv, _, cash_file = get_user_files(user_id)
+    _, portfolio_csv, _, cash_file, starting_equity_file = get_user_files(user_id)
     history = []
     if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
         with open(portfolio_csv, newline='') as f:
@@ -713,7 +741,10 @@ def get_equity_history(user_id: int):
                     history.append({'Date': row['Date'], 'Total Equity': row.get('Total Equity')})
     else:
         cash = '0'
-        if os.path.exists(cash_file):
+        if os.path.exists(starting_equity_file) and os.path.getsize(starting_equity_file) > 0:
+            with open(starting_equity_file) as f:
+                cash = f.read().strip() or '0'
+        elif os.path.exists(cash_file):
             with open(cash_file) as f:
                 cash = f.read().strip() or '0'
         history.append({'Date': datetime.today().strftime('%Y-%m-%d'), 'Total Equity': cash})
@@ -729,7 +760,7 @@ def api_equity_history(user_id):
 def process_portfolio(user_id: int) -> None:
     """Process a user's portfolio using the trading script."""
 
-    _, portfolio_csv, trade_log_csv, cash_file = get_user_files(user_id)
+    _, portfolio_csv, trade_log_csv, cash_file, _ = get_user_files(user_id)
 
     # Ensure trading_script writes to the user's files
     ts.DATA_DIR = Path(os.path.dirname(portfolio_csv))
