@@ -1,8 +1,6 @@
 // Render portfolio information for the logged-in user.
 
 document.addEventListener('DOMContentLoaded', () => {
-    const canvas = document.getElementById('portfolioChart');
-    const ctx = canvas.getContext('2d');
     const token = localStorage.getItem('token');
 
     if (!token) {
@@ -26,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function init() {
         await checkStartingCash();
         await loadPortfolio();
-        loadEquityHistory();
         loadTradeLog();
     }
 
@@ -58,39 +55,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             showError('Failed to check starting cash', err);
         }
-    }
-
-    async function loadEquityHistory() {
-        try {
-            const res = await fetch('/api/equity-history', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!res.ok) throw new Error('Failed to load equity history');
-            const data = await res.json();
-            drawChart(data.map(d => parseFloat(d['Total Equity'])));
-        } catch (err) {
-            showError('Failed to load equity history', err);
-        }
-    }
-
-    function drawChart(values) {
-        if (values.length === 0) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const maxVal = Math.max(...values);
-        const minVal = Math.min(...values);
-        const xScale = canvas.width / (values.length - 1);
-        const yScale = canvas.height / (maxVal - minVal || 1);
-
-        ctx.beginPath();
-        ctx.strokeStyle = '#007bff';
-        ctx.lineWidth = 2;
-        values.forEach((val, i) => {
-            const x = i * xScale;
-            const y = canvas.height - (val - minVal) * yScale;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        });
-        ctx.stroke();
     }
 
     async function loadPortfolio() {
