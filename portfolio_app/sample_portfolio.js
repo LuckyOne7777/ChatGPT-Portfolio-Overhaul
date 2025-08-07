@@ -19,6 +19,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.total_equity) {
                 document.getElementById('totalEquity').textContent = `$${data.total_equity}`;
             }
+            if (data.cash) {
+                document.getElementById('cashBalance').textContent = `$${data.cash}`;
+            }
+            if (data.deployed_capital) {
+                document.getElementById('deployedCapital').textContent = `$${data.deployed_capital}`;
+            }
         } catch (err) {
             console.error(err);
             const el = document.getElementById('errorMessage');
