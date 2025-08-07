@@ -107,9 +107,16 @@ def get_user_files(user_id: int) -> Tuple[str, str, str, str]:
 
 
 def user_needs_cash(user_id: int) -> bool:
-    """Return True if the user's cash file is missing or empty."""
+    """Return True if the user's cash file is missing or empty.
 
-    _, _, _, cash_file = get_user_files(user_id)
+    Also recreate the user's data files if they were deleted while the user
+    remained logged in. This ensures that clearing the portfolio or trade log
+    during a session will prompt for a new starting cash balance on the next
+    page load.
+    """
+
+    username, _, _, _ = get_user_files(user_id)
+    _, _, cash_file = ensure_user_files(username)
     return not (os.path.exists(cash_file) and os.path.getsize(cash_file) > 0)
 
 
