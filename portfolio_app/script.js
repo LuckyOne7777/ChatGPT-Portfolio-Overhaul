@@ -85,6 +85,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.total_equity) {
                 document.getElementById('totalEquity').textContent = `$${data.total_equity}`;
             }
+            if (data.cash) {
+                document.getElementById('cashBalance').textContent = `$${data.cash}`;
+            }
+            if (data.deployed_capital) {
+                document.getElementById('deployedCapital').textContent = `$${data.deployed_capital}`;
+            }
             return data.positions.length > 0;
         } catch (err) {
             showError('Failed to load portfolio', err);
