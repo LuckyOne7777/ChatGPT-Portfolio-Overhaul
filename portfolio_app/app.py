@@ -101,18 +101,10 @@ def get_user_files(user_id: int) -> Tuple[str, str, str, str]:
 
 
 def user_needs_cash(user_id: int) -> bool:
-    """Return True if the user has no trade history and no starting cash."""
+    """Return True if the user's cash file is missing or empty."""
 
-    _, _, trade_log, cash_file = get_user_files(user_id)
-
-    has_trades = False
-    if os.path.exists(trade_log) and os.path.getsize(trade_log) > 0:
-        with open(trade_log, newline='') as f:
-            reader = csv.DictReader(f)
-            has_trades = any(True for _ in reader)
-
-    has_cash = os.path.exists(cash_file) and os.path.getsize(cash_file) > 0
-    return (not has_trades) and (not has_cash)
+    _, _, _, cash_file = get_user_files(user_id)
+    return not (os.path.exists(cash_file) and os.path.getsize(cash_file) > 0)
 
 
 def is_valid_ticker(ticker: str) -> bool:
