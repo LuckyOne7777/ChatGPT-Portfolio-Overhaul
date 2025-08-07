@@ -379,11 +379,19 @@ def get_latest_portfolio(user_id: int):
                 cash = f.read().strip() or '0'
         return [], cash, '0', cash, cash
 
+    # Determine the earliest recorded equity to use as the starting capital.
+    # Some portfolio CSVs may not be sorted chronologically, so simply taking
+    # the first ``TOTAL`` row can yield the most recent value which causes a
+    # 0% change calculation. To avoid this, select the ``TOTAL`` entry with the
+    # earliest date.
     starting_capital = None
-    for row in rows:
-        if row['Ticker'] == 'TOTAL':
-            starting_capital = row.get('Total Equity') or row.get('Cash Balance')
-            break
+    total_rows = [r for r in rows if r.get('Ticker') == 'TOTAL']
+    if total_rows:
+        earliest_total = min(total_rows, key=lambda r: r.get('Date', ''))
+        starting_capital = (
+            earliest_total.get('Total Equity')
+            or earliest_total.get('Cash Balance')
+        )
 
     non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
@@ -424,11 +432,17 @@ def read_sample_portfolio():
         rows = list(csv.DictReader(f))
     if not rows:
         return [], '0', '0', '0', '0'
+    # As with the user portfolio, ensure we capture the earliest ``TOTAL``
+    # entry to represent the starting capital. This prevents misreporting the
+    # percent change when the CSV is in reverse chronological order.
     starting_capital = None
-    for row in rows:
-        if row['Ticker'] == 'TOTAL':
-            starting_capital = row.get('Total Equity') or row.get('Cash Balance')
-            break
+    total_rows = [r for r in rows if r.get('Ticker') == 'TOTAL']
+    if total_rows:
+        earliest_total = min(total_rows, key=lambda r: r.get('Date', ''))
+        starting_capital = (
+            earliest_total.get('Total Equity')
+            or earliest_total.get('Cash Balance')
+        )
     non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
     positions: list[dict[str, str]] = []
