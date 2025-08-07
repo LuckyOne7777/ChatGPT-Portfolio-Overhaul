@@ -221,12 +221,15 @@ def sample_chart_png():
     chatgpt_totals = generate_graph.load_portfolio_details(100.0, None)
     start_date = chatgpt_totals['Date'].min()
     end_date = chatgpt_totals['Date'].max()
+
+    fallback = Path(__file__).resolve().parent / 'week4_performance.png'
     try:
         sp500 = generate_graph.download_sp500(start_date, end_date)
+        if sp500.empty:
+            raise ValueError('Empty SP500 data')
     except Exception:
-        return '', 500
-    if sp500.empty:
-        return '', 500
+        # Fall back to a pre-generated chart so the sample page always works
+        return send_file(fallback, mimetype='image/png')
 
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(10, 6))
