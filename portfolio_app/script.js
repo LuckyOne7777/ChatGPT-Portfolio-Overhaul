@@ -24,11 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
 
     async function init() {
-        let hasPositions = await loadPortfolio();
-        if (!hasPositions) {
-            await checkStartingCash();
-            await loadPortfolio();
-        }
+        await checkStartingCash();
+        await loadPortfolio();
         loadEquityHistory();
         loadTradeLog();
     }
