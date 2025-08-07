@@ -54,7 +54,7 @@ Visualization tools — Matplotlib graphs comparing ChatGPT vs Index
 
 Logs & trade data — Auto-saved logs for transparency
 
-Starting balance prompt — Users without a recorded cash balance are asked to set one (up to $100k)
+Starting balance prompt — Users without a recorded cash balance are asked to set one (up to $10k)
 
 # Why This Matters
 AI is being hyped across every industry, but can it really manage money without guidance?
