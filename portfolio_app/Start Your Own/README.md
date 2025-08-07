@@ -22,7 +22,10 @@ This script updates your portfolio and logs trades.
    - If it is a weekend, the script will inform you that date will be inaccurate. However, this is easily fixable by editing CSV files manually and saving.
    - If 'chatgpt_portfolio_update.csv' is empty (meaning no past trading days logged), you will required to enter your starting cash.
    - From here, you can set up your portfolio or make any changes.
-   - The script asks if you want to record manual buys or sells. **IT WILL ASSUME TRADES HAPPEN, SO CHECK ACCURACY.**
+   - The script asks if you want to record manual buys or sells. Each trade can
+     include an optional reason which is appended to the default
+     ``MANUAL BUY/SELL`` message in the trade log. **IT WILL ASSUME TRADES
+     HAPPEN, SO CHECK ACCURACY.**
    - After you hit 'Enter' all calculations for the day are made.
    - Results are saved to `chatgpt_portfolio_update.csv` and any trades are added to `chatgpt_trade_log.csv`.
    - In the terminal, daily results are printed. Copy and paste results into the LLM. **ALL PROMPTING IS MANUAL AT THE MOMENT.**

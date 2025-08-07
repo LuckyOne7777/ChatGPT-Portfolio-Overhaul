@@ -75,7 +75,9 @@ def process_portfolio(
         Optional list of dictionaries describing manual trades. Each dictionary
         must include an ``action`` key (``"b"`` for buy or ``"s"`` for sell),
         ``ticker``, ``shares``, and ``price``. Buy trades also require a
-        ``stop_loss`` value.
+        ``stop_loss`` value. An optional ``reason`` field can be supplied and
+        will be appended to the default ``MANUAL BUY/SELL`` message in the
+        trade log.
 
     Returns
     -------
@@ -118,15 +120,17 @@ def process_portfolio(
             if stop_loss <= 0:
                 print("Invalid stop loss. Manual buy skipped.")
                 continue
+            reason = str(trade.get("reason", "")).strip() or "New position"
             cash, portfolio_df = log_manual_buy(
-                price, shares, ticker, stop_loss, cash, portfolio_df
+                price, shares, ticker, stop_loss, cash, portfolio_df, reason
             )
         elif action == "s":
             if trade.get("stop_loss") not in (None, "", 0):
                 print("Stop loss specified for sell order. Manual trade skipped.")
                 continue
+            reason = str(trade.get("reason", "")).strip() or "No reason provided"
             cash, portfolio_df = log_manual_sell(
-                price, shares, ticker, cash, portfolio_df
+                price, shares, ticker, cash, portfolio_df, reason
             )
         else:
             print("Unknown trade action. Manual trade skipped.")
@@ -253,8 +257,16 @@ def log_manual_buy(
     stoploss: float,
     cash: float,
     chatgpt_portfolio: pd.DataFrame,
+    reason: str = "New position",
 ) -> tuple[float, pd.DataFrame]:
-    """Log a manual purchase and append to the portfolio."""
+    """Log a manual purchase and append to the portfolio.
+
+    Parameters
+    ----------
+    reason:
+        Description of why the manual buy occurred. The log will always begin
+        with ``"MANUAL BUY -"`` followed by this string.
+    """
     data = yf.download(ticker, period="1d")
     data = cast(pd.DataFrame, data)
     if data.empty:
@@ -281,7 +293,7 @@ def log_manual_buy(
         "Buy Price": buy_price,
         "Cost Basis": buy_price * shares,
         "PnL": pnl,
-        "Reason": "MANUAL BUY - New position",
+        "Reason": f"MANUAL BUY - {reason}",
     }
 
     if os.path.exists(TRADE_LOG_CSV):
@@ -323,8 +335,16 @@ def log_manual_sell(
     ticker: str,
     cash: float,
     chatgpt_portfolio: pd.DataFrame,
+    reason: str = "No reason provided",
 ) -> tuple[float, pd.DataFrame]:
-    """Log a manual sale and update the portfolio."""
+    """Log a manual sale and update the portfolio.
+
+    Parameters
+    ----------
+    reason:
+        Description of why the manual sell occurred. The log will always begin
+        with ``"MANUAL SELL -"`` followed by this string.
+    """
     if ticker not in chatgpt_portfolio["ticker"].values:
         print(f"Manual sell for {ticker} failed: ticker not in portfolio.")
         return cash, chatgpt_portfolio
@@ -358,7 +378,7 @@ def log_manual_sell(
         "Buy Price": "",
         "Cost Basis": cost_basis,
         "PnL": pnl,
-        "Reason": "MANUAL SELL",
+        "Reason": f"MANUAL SELL - {reason}",
         "Shares Sold": shares_sold,
         "Sell Price": sell_price,
     }
