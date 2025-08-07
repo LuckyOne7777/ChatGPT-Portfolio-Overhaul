@@ -18,6 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (data.total_equity) {
                 document.getElementById('totalEquity').textContent = `$${data.total_equity}`;
+                if (data.starting_capital) {
+                    const change = ((parseFloat(data.total_equity) - parseFloat(data.starting_capital)) / parseFloat(data.starting_capital)) * 100;
+                    document.getElementById('equityChange').textContent = `(${change.toFixed(2)}%)`;
+                }
             }
             if (data.cash) {
                 document.getElementById('cashBalance').textContent = `$${data.cash}`;

@@ -367,7 +367,7 @@ def get_latest_portfolio(user_id: int):
         if os.path.exists(cash_file):
             with open(cash_file) as f:
                 cash = f.read().strip() or '0'
-        return [], cash, '0', cash
+        return [], cash, '0', cash, cash
 
     with open(portfolio_csv, newline='') as f:
         rows = list(csv.DictReader(f))
@@ -377,7 +377,13 @@ def get_latest_portfolio(user_id: int):
         if os.path.exists(cash_file):
             with open(cash_file) as f:
                 cash = f.read().strip() or '0'
-        return [], cash, '0', cash
+        return [], cash, '0', cash, cash
+
+    starting_capital = None
+    for row in rows:
+        if row['Ticker'] == 'TOTAL':
+            starting_capital = row.get('Total Equity') or row.get('Cash Balance')
+            break
 
     non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
@@ -408,16 +414,21 @@ def get_latest_portfolio(user_id: int):
     except ValueError:
         deployed_capital = 0.0
 
-    return positions, cash, f"{deployed_capital:.2f}", total_equity
+    return positions, cash, f"{deployed_capital:.2f}", total_equity, starting_capital
 
 
 def read_sample_portfolio():
     if not os.path.exists(SAMPLE_PORTFOLIO):
-        return [], '0', '0', '0'
+        return [], '0', '0', '0', '0'
     with open(SAMPLE_PORTFOLIO, newline='') as f:
         rows = list(csv.DictReader(f))
     if not rows:
-        return [], '0', '0', '0'
+        return [], '0', '0', '0', '0'
+    starting_capital = None
+    for row in rows:
+        if row['Ticker'] == 'TOTAL':
+            starting_capital = row.get('Total Equity') or row.get('Cash Balance')
+            break
     non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
     positions: list[dict[str, str]] = []
@@ -441,7 +452,7 @@ def read_sample_portfolio():
     except ValueError:
         deployed_capital = 0.0
 
-    return positions, cash, f"{deployed_capital:.2f}", total_equity
+    return positions, cash, f"{deployed_capital:.2f}", total_equity, starting_capital
 
 
 def read_sample_trade_log():
@@ -621,8 +632,8 @@ def api_trade(user_id):
 
 @app.route('/api/sample-portfolio')
 def api_sample_portfolio():
-    positions, cash, deployed_capital, total_equity = read_sample_portfolio()
-    return jsonify({'positions': positions, 'cash': cash, 'deployed_capital': deployed_capital, 'total_equity': total_equity})
+    positions, cash, deployed_capital, total_equity, starting_capital = read_sample_portfolio()
+    return jsonify({'positions': positions, 'cash': cash, 'deployed_capital': deployed_capital, 'total_equity': total_equity, 'starting_capital': starting_capital})
 
 
 @app.route('/api/sample-trade-log')
@@ -639,8 +650,8 @@ def api_sample_equity_history():
 @app.route('/api/portfolio')
 @token_required
 def api_portfolio(user_id):
-    positions, cash, deployed_capital, total_equity = get_latest_portfolio(user_id)
-    return jsonify({'positions': positions, 'cash': cash, 'deployed_capital': deployed_capital, 'total_equity': total_equity})
+    positions, cash, deployed_capital, total_equity, starting_capital = get_latest_portfolio(user_id)
+    return jsonify({'positions': positions, 'cash': cash, 'deployed_capital': deployed_capital, 'total_equity': total_equity, 'starting_capital': starting_capital})
 
 
 def read_trade_log(user_id: int):
