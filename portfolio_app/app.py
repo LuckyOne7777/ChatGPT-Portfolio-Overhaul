@@ -549,7 +549,8 @@ def api_trade(user_id):
         pos = positions.get(ticker)
         if not pos:
             return jsonify({'message': "You don't own this ticker"}), 400
-        if pos['shares'] < shares:
+        epsilon = 1e-6  # small tolerance for floating point precision issues
+        if shares - pos['shares'] > epsilon:
             return jsonify({'message': "You're trying to sell more shares than you own"}), 400
         total_shares = pos['shares']
         cost_basis_per_share = pos['cost_basis'] / total_shares
@@ -557,7 +558,7 @@ def api_trade(user_id):
         pnl = price * shares - cost_basis
         pos['shares'] -= shares
         pos['cost_basis'] -= cost_basis
-        if pos['shares'] == 0:
+        if abs(pos['shares']) <= epsilon:
             del positions[ticker]
         cash += price * shares
         log = {
