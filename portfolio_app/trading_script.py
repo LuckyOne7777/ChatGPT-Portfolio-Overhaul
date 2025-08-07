@@ -139,6 +139,7 @@ def process_portfolio(
         ticker = stock["ticker"]
         shares = int(stock["shares"])
         cost = stock["buy_price"]
+        cost_basis = cost * shares
         stop = stock["stop_loss"]
         data = yf.Ticker(ticker).history(period="1d")
 
@@ -148,7 +149,8 @@ def process_portfolio(
                 "Date": today,
                 "Ticker": ticker,
                 "Shares": shares,
-                "Cost Basis": cost,
+                "Buy Price": cost,
+                "Cost Basis": cost_basis,
                 "Stop Loss": stop,
                 "Current Price": "",
                 "Total Value": "",
@@ -180,7 +182,8 @@ def process_portfolio(
                 "Date": today,
                 "Ticker": ticker,
                 "Shares": shares,
-                "Cost Basis": cost,
+                "Buy Price": cost,
+                "Cost Basis": cost_basis,
                 "Stop Loss": stop,
                 "Current Price": price,
                 "Total Value": value,
@@ -197,6 +200,7 @@ def process_portfolio(
         "Date": today,
         "Ticker": "TOTAL",
         "Shares": "",
+        "Buy Price": "",
         "Cost Basis": "",
         "Stop Loss": "",
         "Current Price": "",
@@ -533,8 +537,8 @@ def load_latest_portfolio_state(
     # Get all tickers from the latest date
     latest_tickers = non_total[non_total["Date"] == latest_date].copy()
     latest_tickers.drop(columns=["Date", "Cash Balance", "Total Equity", "Action", "Current Price", "PnL", "Total Value"], inplace=True)
-    latest_tickers.rename(columns={"Cost Basis": "buy_price", "Shares": "shares", "Ticker": "ticker", "Stop Loss": "stop_loss"}, inplace=True)
-    latest_tickers['cost_basis'] = latest_tickers['shares'] * latest_tickers['buy_price']
+    # Delete costbasis being renamed as buy_price
+    latest_tickers.rename(columns={"Cost Basis": "cost_basis", "Buy Price": "buy_price", "Shares": "shares", "Ticker": "ticker", "Stop Loss": "stop_loss"}, inplace=True)
     latest_tickers = latest_tickers.reset_index(drop=True).to_dict(orient='records')
     df = df[df["Ticker"] == "TOTAL"]  # Only the total summary rows
     df["Date"] = pd.to_datetime(df["Date"])

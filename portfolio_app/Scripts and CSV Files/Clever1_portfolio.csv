@@ -1,1 +1,3 @@
-Date,Ticker,Shares,Cost Basis,Stop Loss,Current Price,Total Value,PnL,Action,Cash Balance,Total Equity
+Date,Ticker,Shares,Cost Basis,Stop Loss,Current Price,Total Value,PnL,Action,Cash Balance,Total Equity,Buy Price
+2025-08-07,NVDA,2,200.0,0.0,182.16,364.32,164.32,HOLD,,,100.0
+2025-08-07,TOTAL,,,,,364.32,164.32,,9800.0,10164.32,

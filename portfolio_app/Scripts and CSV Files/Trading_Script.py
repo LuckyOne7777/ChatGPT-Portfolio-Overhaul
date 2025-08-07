@@ -8,10 +8,14 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from trading_script import main
 
+script_dir = Path(__file__).resolve().parent
+csv_file = script_dir / "chatgpt_portfolio_update.csv"
+main(str(csv_file), script_dir)
+
 
 if __name__ == "__main__":
 
     data_dir = Path(__file__).resolve().parent
-    main("Scripts and CSV Files/chatgpt_portfolio_update.csv", Path("Scripts and CSV Files"))
+    main(str(csv_file), script_dir)
 
 
