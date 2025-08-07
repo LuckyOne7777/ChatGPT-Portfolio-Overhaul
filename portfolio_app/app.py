@@ -383,7 +383,6 @@ def get_latest_portfolio(user_id: int):
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
     positions: list[dict[str, str]] = []
     cash = '0'
-    deployed_capital = 0.0
     total_equity = None
     for row in rows:
         if row['Date'] == latest_date and row['Ticker'] != 'TOTAL':
@@ -395,10 +394,6 @@ def get_latest_portfolio(user_id: int):
                 'PnL': row['PnL'],
                 'Stop_Loss': row['Stop Loss'],
             })
-            try:
-                deployed_capital += float(row['Cost Basis'] or 0)
-            except ValueError:
-                pass
         elif row['Date'] == latest_date and row['Ticker'] == 'TOTAL':
             total_equity = row.get('Total Equity') or row.get('Cash Balance')
             cash = row.get('Cash Balance') or '0'
@@ -407,6 +402,11 @@ def get_latest_portfolio(user_id: int):
         with open(cash_file) as f:
             cash = f.read().strip() or '0'
         total_equity = cash
+
+    try:
+        deployed_capital = float(total_equity or 0) - float(cash or 0)
+    except ValueError:
+        deployed_capital = 0.0
 
     return positions, cash, f"{deployed_capital:.2f}", total_equity
 
@@ -422,7 +422,6 @@ def read_sample_portfolio():
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
     positions: list[dict[str, str]] = []
     cash = '0'
-    deployed_capital = 0.0
     total_equity = None
     for row in rows:
         if row['Date'] == latest_date and row['Ticker'] != 'TOTAL':
@@ -433,13 +432,15 @@ def read_sample_portfolio():
                 'Current_Price': row['Current Price'],
                 'PnL': row['PnL'],
             })
-            try:
-                deployed_capital += float(row['Cost Basis'] or 0)
-            except ValueError:
-                pass
         elif row['Date'] == latest_date and row['Ticker'] == 'TOTAL':
             total_equity = row.get('Total Equity') or row.get('Cash Balance')
             cash = row.get('Cash Balance') or '0'
+
+    try:
+        deployed_capital = float(total_equity or 0) - float(cash or 0)
+    except ValueError:
+        deployed_capital = 0.0
+
     return positions, cash, f"{deployed_capital:.2f}", total_equity
 
 
