@@ -40,6 +40,7 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
 
     portfolio_missing = not os.path.exists(portfolio)
     trade_log_missing = not os.path.exists(trade_log)
+codex/fix-user-file-creation-issue
     cash_missing_or_empty = not (
         os.path.exists(cash_file) and os.path.getsize(cash_file) > 0
     )
