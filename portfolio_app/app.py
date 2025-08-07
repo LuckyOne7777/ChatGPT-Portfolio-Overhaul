@@ -247,12 +247,10 @@ def sample_chart_png():
 
     baseline_equity = 100.0
     chatgpt_totals = generate_graph.load_portfolio_details(baseline_equity, None, None)
-    start_date = chatgpt_totals['Date'].min()
-    end_date = chatgpt_totals['Date'].max()
 
     fallback = Path(__file__).resolve().parent / 'week4_performance.png'
     try:
-        sp500 = generate_graph.download_sp500(start_date, end_date, baseline_equity)
+        sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
         if sp500.empty:
             raise ValueError('Empty SP500 data')
     except Exception:
@@ -328,10 +326,8 @@ def user_chart_png(user_id):
     generate_graph.PORTFOLIO_CSV = Path(portfolio_csv)
 
     chatgpt_totals = generate_graph.load_portfolio_details(baseline_equity, None, None)
-    start_date = chatgpt_totals['Date'].min()
-    end_date = chatgpt_totals['Date'].max()
 
-    sp500 = generate_graph.download_sp500(start_date, end_date, baseline_equity)
+    sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
     if sp500.empty:
         return jsonify({'message': 'No benchmark data'}), 404
 

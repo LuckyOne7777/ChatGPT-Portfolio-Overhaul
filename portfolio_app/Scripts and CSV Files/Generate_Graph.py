@@ -77,22 +77,24 @@ def load_portfolio_details(
     return chatgpt_totals
 
 
-def download_sp500(
-    start_date: pd.Timestamp, end_date: pd.Timestamp, baseline_equity: float = 100.0
-) -> pd.DataFrame:
-    """Download S&P 500 prices normalised to ``baseline_equity``."""
+def download_sp500(dates: pd.Series, baseline_equity: float = 100.0) -> pd.DataFrame:
+    """Download S&P 500 prices and align them with ``dates``.
 
+    Any missing benchmark values are forward filled to ensure the returned
+    DataFrame has a 1:1 match with the portfolio's timeline.
+    """
+
+    start_date = dates.min()
+    end_date = dates.max()
     sp500 = yf.download(
         "^SPX", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False
     )
-    sp500 = cast(pd.DataFrame, sp500)
-    sp500 = sp500.reset_index()
-    if isinstance(sp500.columns, pd.MultiIndex):
-        sp500.columns = sp500.columns.get_level_values(0)
+    sp500 = cast(pd.DataFrame, sp500)["Close"]
 
-    base_price = sp500["Close"].iloc[0]
-    sp500["SPX Value"] = sp500["Close"] / base_price * baseline_equity
-    return sp500
+    aligned = sp500.reindex(pd.to_datetime(dates)).ffill().bfill().interpolate()
+    base_price = aligned.iloc[0]
+    values = aligned / base_price * baseline_equity
+    return pd.DataFrame({"Date": pd.to_datetime(dates), "SPX Value": values})
 
 
 def main(
@@ -107,9 +109,7 @@ def main(
         raise SystemExit("Baseline equity must be positive.")
 
     chatgpt_totals = load_portfolio_details(baseline_equity, start_date, end_date)
-    start_date = chatgpt_totals["Date"].min()
-    end_date = chatgpt_totals["Date"].max()
-    sp500 = download_sp500(start_date, end_date, baseline_equity)
+    sp500 = download_sp500(chatgpt_totals["Date"], baseline_equity)
 
     plt.style.use("seaborn-v0_8-whitegrid")
     fig, ax = plt.subplots(figsize=(10, 6))
