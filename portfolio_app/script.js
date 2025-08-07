@@ -37,10 +37,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.needs_cash) {
                 let amount;
                 do {
-                    amount = prompt('Enter starting cash (max 100000):');
-                    if (amount === null) return; // user cancelled
-                    amount = parseFloat(amount);
-                } while (isNaN(amount) || amount < 0 || amount > 100000);
+                    const input = prompt('Enter starting cash (0-10000):');
+                    if (input === null) return; // user cancelled
+                    const trimmed = input.trim();
+                    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+                        amount = Number(trimmed);
+                    } else {
+                        amount = NaN;
+                    }
+                } while (!Number.isFinite(amount) || amount < 0 || amount > 10000);
 
                 const setRes = await fetch('/api/set-cash', {
                     method: 'POST',

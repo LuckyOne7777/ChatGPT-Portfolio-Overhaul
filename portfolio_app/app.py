@@ -344,15 +344,15 @@ def api_needs_cash(user_id):
 @app.route('/api/set-cash', methods=['POST'])
 @token_required
 def api_set_cash(user_id):
-    """Persist a starting cash balance for a user (up to 100k)."""
+    """Persist a starting cash balance for a user (up to 10k)."""
 
     data = request.get_json() or {}
     try:
         amount = float(data.get('cash', 0))
     except (TypeError, ValueError):
         return jsonify({'message': 'Invalid cash amount'}), 400
-    if amount < 0 or amount >= 100_000:
-        return jsonify({'message': 'Cash must be between 0 and 100000'}), 400
+    if amount < 0 or amount > 10_000:
+        return jsonify({'message': 'Cash must be between 0 and 10000'}), 400
 
     _, _, _, cash_file = get_user_files(user_id)
     with open(cash_file, 'w') as f:
