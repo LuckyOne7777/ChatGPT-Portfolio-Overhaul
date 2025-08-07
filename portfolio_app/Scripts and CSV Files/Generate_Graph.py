@@ -1,8 +1,10 @@
 """Plot ChatGPT portfolio performance against the S&P 500.
 
-The script loads logged portfolio equity, fetches S&P 500 data, and
-renders a comparison chart. Core behaviour remains unchanged; the code
-is simply reorganised and commented for clarity.
+The script loads logged portfolio equity, filters it to a user supplied
+timeframe, normalises the values to a configurable starting capital and
+compares the result against the S&P 500.  The resulting chart can be
+displayed interactively or written to an image/HTML file for embedding
+in a web page.
 """
 
 import argparse
@@ -28,18 +30,14 @@ def parse_date(date_str: str, label: str) -> pd.Timestamp:
 
 
 def load_portfolio_details(
-    baseline_equity: float, baseline_date: pd.Timestamp | None
+    baseline_equity: float,
+    start_date: pd.Timestamp | None,
+    end_date: pd.Timestamp | None,
 ) -> pd.DataFrame:
-    """Load portfolio equity history and prepend a baseline row.
+    """Load and normalise portfolio equity history.
 
-    Parameters
-    ----------
-    baseline_equity:
-        Dollar value used for the synthetic starting equity.
-    baseline_date:
-        Date assigned to the baseline equity. If ``None`` the earliest
-        portfolio date is used. When the CSV has no data the baseline date is
-        set to ``pd.Timestamp.today()``.
+    The CSV is filtered to the requested timeframe and scaled so the first
+    entry equals ``baseline_equity``.
     """
 
     if not PORTFOLIO_CSV.exists():
@@ -52,19 +50,38 @@ def load_portfolio_details(
     chatgpt_df = pd.read_csv(PORTFOLIO_CSV)
     chatgpt_totals = chatgpt_df[chatgpt_df["Ticker"] == "TOTAL"].copy()
     chatgpt_totals["Date"] = pd.to_datetime(chatgpt_totals["Date"])
+    chatgpt_totals["Total Equity"] = pd.to_numeric(
+        chatgpt_totals["Total Equity"], errors="coerce"
+    )
 
-    if baseline_date is None:
-        if not chatgpt_totals.empty:
-            baseline_date = chatgpt_totals["Date"].min()
-        else:
-            baseline_date = pd.Timestamp.today()
+    if chatgpt_totals.empty:
+        raise SystemExit("Portfolio CSV contains no TOTAL rows.")
 
-    baseline_row = pd.DataFrame({"Date": [baseline_date], "Total Equity": [baseline_equity]})
-    return pd.concat([baseline_row, chatgpt_totals], ignore_index=True).sort_values("Date")
+    min_date = chatgpt_totals["Date"].min()
+    max_date = chatgpt_totals["Date"].max()
+
+    if start_date is None or start_date < min_date:
+        start_date = min_date
+    if end_date is None or end_date > max_date:
+        end_date = max_date
+    if start_date > end_date:
+        raise SystemExit("Start date must be on or before end date.")
+
+    mask = (chatgpt_totals["Date"] >= start_date) & (chatgpt_totals["Date"] <= end_date)
+    chatgpt_totals = chatgpt_totals.loc[mask].copy()
+
+    baseline_value = float(chatgpt_totals["Total Equity"].iloc[0])
+    scale = baseline_equity / baseline_value
+    chatgpt_totals["Total Equity"] = chatgpt_totals["Total Equity"] * scale
+    chatgpt_totals.iloc[0, chatgpt_totals.columns.get_loc("Total Equity")] = baseline_equity
+    return chatgpt_totals
 
 
-def download_sp500(start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
-    """Download S&P 500 prices and normalise to a $100 baseline."""
+def download_sp500(
+    start_date: pd.Timestamp, end_date: pd.Timestamp, baseline_equity: float = 100.0
+) -> pd.DataFrame:
+    """Download S&P 500 prices normalised to ``baseline_equity``."""
+
     sp500 = yf.download(
         "^SPX", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False
     )
@@ -72,60 +89,42 @@ def download_sp500(start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataF
     sp500 = sp500.reset_index()
     if isinstance(sp500.columns, pd.MultiIndex):
         sp500.columns = sp500.columns.get_level_values(0)
-    spx_27_price = 6173.07
-    scaling_factor = 100 / spx_27_price
-    sp500["SPX Value ($100 Invested)"] = sp500["Close"] * scaling_factor
+
+    base_price = sp500["Close"].iloc[0]
+    sp500["SPX Value"] = sp500["Close"] / base_price * baseline_equity
     return sp500
 
 
 def main(
-    baseline_equity: float, start_date: pd.Timestamp | None, end_date: pd.Timestamp | None
+    baseline_equity: float,
+    start_date: pd.Timestamp | None,
+    end_date: pd.Timestamp | None,
+    output: Path | None,
 ) -> None:
-    """Generate and display the comparison graph."""
+    """Generate the comparison graph."""
+
     if baseline_equity <= 0:
-        raise SystemError("Baseline equity must be positive.")
+        raise SystemExit("Baseline equity must be positive.")
 
-    chatgpt_totals = load_portfolio_details(baseline_equity, start_date)
+    chatgpt_totals = load_portfolio_details(baseline_equity, start_date, end_date)
+    start_date = chatgpt_totals["Date"].min()
+    end_date = chatgpt_totals["Date"].max()
+    sp500 = download_sp500(start_date, end_date, baseline_equity)
 
-    min_portfolio = chatgpt_totals["Date"].min()
-    max_portfolio = chatgpt_totals["Date"].max()
-
-    if start_date is None:
-        start_date = min_portfolio
-    if end_date is None:
-        end_date = max_portfolio
-
-    if start_date < min_portfolio:
-        print(
-            "Start date before portfolio history; using",
-            min_portfolio.date(),
-        )
-        start_date = min_portfolio
-    if end_date > max_portfolio:
-        print(
-            "End date after portfolio history; using",
-            max_portfolio.date(),
-        )
-        end_date = max_portfolio
-    if start_date > end_date:
-        raise SystemExit("Start date must be on or before end date.")
-
-    sp500 = download_sp500(start_date, end_date)
-
-    plt.figure(figsize=(10, 6))
     plt.style.use("seaborn-v0_8-whitegrid")
-    plt.plot(
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(
         chatgpt_totals["Date"],
         chatgpt_totals["Total Equity"],
-        label="ChatGPT ($100 Invested)",
+        label=f"ChatGPT (${baseline_equity:.0f} Invested)",
         marker="o",
         color="blue",
         linewidth=2,
     )
-    plt.plot(
+    ax.plot(
         sp500["Date"],
-        sp500["SPX Value ($100 Invested)"],
-        label="S&P 500 ($100 Invested)",
+        sp500["SPX Value"],
+        label=f"S&P 500 (${baseline_equity:.0f} Invested)",
         marker="o",
         color="orange",
         linestyle="--",
@@ -134,28 +133,54 @@ def main(
 
     final_date = chatgpt_totals["Date"].iloc[-1]
     final_chatgpt = float(chatgpt_totals["Total Equity"].iloc[-1])
-    final_spx = sp500["SPX Value ($100 Invested)"].iloc[-1]
+    final_spx = float(sp500["SPX Value"].iloc[-1])
 
-    plt.text(
-        final_date, final_chatgpt + 0.3, f"+{final_chatgpt - baseline_equity:.1f}%", color="blue", fontsize=9
+    ax.text(
+        final_date,
+        final_chatgpt + 0.3,
+        f"+{final_chatgpt - baseline_equity:.1f}%",
+        color="blue",
+        fontsize=9,
     )
-    plt.text(
-        final_date, final_spx + 0.9, f"+{final_spx - 100:.1f}%", color="orange", fontsize=9
+    ax.text(
+        final_date,
+        final_spx + 0.9,
+        f"+{final_spx - baseline_equity:.1f}%",
+        color="orange",
+        fontsize=9,
     )
-    plt.title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
-    plt.xlabel("Date")
-    plt.ylabel("Value of $100 Investment")
-    plt.xticks(rotation=15)
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    ax.set_title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
+    ax.set_xlabel("Date")
+    ax.set_ylabel(f"Value of ${baseline_equity:.0f} Investment")
+    ax.legend()
+    ax.grid(True)
+    fig.autofmt_xdate()
+
+    if output:
+        if not output.is_absolute():
+            output = DATA_DIR / output
+        if output.suffix.lower() == ".html":
+            try:  # pragma: no cover - optional dependency
+                import mpld3
+            except ModuleNotFoundError as exc:  # pragma: no cover - user environment
+                msg = (
+                    "mpld3 is required for HTML output. Install it with 'pip install mpld3'."
+                )
+                raise SystemExit(msg) from exc
+            mpld3.save_html(fig, str(output))
+        else:
+            fig.savefig(output, bbox_inches="tight")
+    else:
+        plt.show()
+    plt.close(fig)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot portfolio performance")
     parser.add_argument(
+        "--starting-capital",
         "--baseline-equity",
+        dest="starting_capital",
         type=float,
         default=100.0,
         help="Starting equity value used for normalisation",
@@ -170,10 +195,16 @@ if __name__ == "__main__":
         type=str,
         help="End date for the chart (YYYY-MM-DD)",
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        help="Optional path to save the chart (.png or .html)",
+    )
     args = parser.parse_args()
 
     start = parse_date(args.start_date, "start date") if args.start_date else None
     end = parse_date(args.end_date, "end date") if args.end_date else None
+    output = Path(args.output) if args.output else None
 
-    main(args.baseline_equity, start, end)
+    main(args.starting_capital, start, end, output)
 
