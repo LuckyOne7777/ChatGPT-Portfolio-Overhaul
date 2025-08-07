@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.needs_cash) {
                 let amount;
                 do {
-                    const input = prompt('Enter starting cash (0-10000):');
+                    const input = prompt('Enter starting cash (0 - 10,000):');
                     if (input === null) return; // user cancelled
                     const trimmed = input.trim();
                     if (/^\d+(\.\d+)?$/.test(trimmed)) {
