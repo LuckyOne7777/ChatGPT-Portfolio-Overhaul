@@ -476,24 +476,28 @@ def api_trade(user_id):
     stop_loss = data.get('stop_loss')
     if not ticker or action not in {'buy', 'sell'} or price <= 0 or shares <= 0:
         return jsonify({'message': 'Invalid trade data'}), 400
-    if action == 'sell' and stop_loss not in (None, ''):
+    if action == 'sell' and stop_loss not in (None, '', 0, '0'):
         return jsonify({'message': 'Cannot set a stop loss on a sell order'}), 400
     if action == 'buy':
-        if stop_loss not in (None, ''):
+        if stop_loss not in (None, '', 0, '0'):
             stop_loss_str = str(stop_loss).strip()
             if stop_loss_str.endswith('%'):
                 try:
-                    float(stop_loss_str[:-1])
+                    val = float(stop_loss_str[:-1])
+                    if val < 0:
+                        raise ValueError
                 except ValueError:
                     return jsonify({'message': 'Invalid stop loss value'}), 400
             else:
                 try:
-                    float(stop_loss_str)
+                    val = float(stop_loss_str)
+                    if val < 0:
+                        raise ValueError
                 except (TypeError, ValueError):
                     return jsonify({'message': 'Invalid stop loss value'}), 400
             stop_loss = stop_loss_str
         else:
-            stop_loss = ''
+            stop_loss = '0'
     else:
         stop_loss = ''
     if not is_valid_ticker(ticker):
