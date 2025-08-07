@@ -38,7 +38,11 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
     trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
     cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
 
-    if not os.path.exists(portfolio):
+    portfolio_missing = not os.path.exists(portfolio)
+    trade_log_missing = not os.path.exists(trade_log)
+    cash_missing = not os.path.exists(cash_file)
+
+    if portfolio_missing:
         with open(portfolio, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -55,7 +59,7 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
                 'Total Equity',
             ])
 
-    if not os.path.exists(trade_log):
+    if trade_log_missing:
         with open(trade_log, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -70,9 +74,9 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
                 'Sell Price',
             ])
 
-    if not os.path.exists(cash_file):
-        # Create an empty cash file. A starting balance will be set later
-        # if the user has no trading history.
+    if cash_missing or portfolio_missing or trade_log_missing:
+        # Reset cash if any of the data files were missing so that a new
+        # starting balance can be provided.
         open(cash_file, 'w').close()
 
     if st is not None:
