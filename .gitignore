@@ -3,3 +3,12 @@
 **/__pycache__/
 **/*.pyc
 **/.pytest_cache/
+
+# Ignore ALL CSV files
+*.csv
+.txt
+
+# EXCEPT keep these tracked
+!Scripts and CSV Files/chatgpt_portfolio_update.csv
+!Scripts and CSV Files/chatgpt_trade_log.csv
+!Scripts and CSV Files/chatgpt_portfolio.csv
