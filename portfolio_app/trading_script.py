@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import Any, cast
+from typing import Any
 import os
 import time
 
@@ -107,8 +107,14 @@ def process_portfolio(
             print(f"Invalid ticker '{ticker}'. Manual trade skipped.")
             continue
         try:
-            shares = float(trade.get("shares", 0))
-            price = float(trade.get("price", 0))
+            shares_val = trade.get("shares", 0)
+            price_val = trade.get("price", 0)
+            if not isinstance(shares_val, (int, float, str)) or not isinstance(
+                price_val, (int, float, str)
+            ):
+                raise TypeError
+            shares = float(shares_val)
+            price = float(price_val)
             if shares <= 0 or price <= 0:
                 raise ValueError
         except (TypeError, ValueError):
