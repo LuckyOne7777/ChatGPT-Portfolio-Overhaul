@@ -85,8 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.total_equity) {
                 document.getElementById('totalEquity').textContent = `$${data.total_equity}`;
                 if (data.starting_capital) {
-                    const change = ((parseFloat(data.total_equity) - parseFloat(data.starting_capital)) / parseFloat(data.starting_capital)) * 100;
-                    document.getElementById('equityChange').textContent = `(${change.toFixed(2)}%)`;
+                    const total = parseFloat(String(data.total_equity).replace(/,/g, ''));
+                    const start = parseFloat(String(data.starting_capital).replace(/,/g, ''));
+                    if (!isNaN(total) && !isNaN(start) && start !== 0) {
+                        const change = ((total - start) / start) * 100;
+                        document.getElementById('equityChange').textContent = `(${change.toFixed(2)}%)`;
+                    } else {
+                        document.getElementById('equityChange').textContent = '';
+                    }
                 }
             }
             if (data.cash) {
