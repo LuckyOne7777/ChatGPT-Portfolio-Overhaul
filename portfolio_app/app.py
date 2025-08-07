@@ -40,7 +40,10 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
 
     portfolio_missing = not os.path.exists(portfolio)
     trade_log_missing = not os.path.exists(trade_log)
-    cash_missing = not os.path.exists(cash_file)
+codex/fix-user-file-creation-issue
+    cash_missing_or_empty = not (
+        os.path.exists(cash_file) and os.path.getsize(cash_file) > 0
+    )
 
     if portfolio_missing:
         with open(portfolio, 'w', newline='') as f:
@@ -74,9 +77,9 @@ def ensure_user_files(username: str) -> Tuple[str, str, str]:
                 'Sell Price',
             ])
 
-    if cash_missing or portfolio_missing or trade_log_missing:
-        # Reset cash if any of the data files were missing so that a new
-        # starting balance can be provided.
+    if cash_missing_or_empty or portfolio_missing or trade_log_missing:
+        # Reset cash if any of the data files were missing or the cash file is
+        # empty so that a new starting balance can be provided.
         open(cash_file, 'w').close()
 
     if st is not None:
