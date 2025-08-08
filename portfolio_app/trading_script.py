@@ -155,9 +155,13 @@ def process_portfolio(
                     print("Invalid stop loss. Manual buy skipped.")
                     continue
             reason = str(trade.get("reason", "")).strip() or "New position"
-            cash, portfolio_df = log_manual_buy(
-                price, shares, ticker, stop_loss, cash, portfolio_df, reason
-            )
+            try:
+                cash, portfolio_df = log_manual_buy(
+                    price, shares, ticker, stop_loss, cash, portfolio_df, reason
+                )
+            except ValueError as e:
+                print(e)
+                continue
         elif action == "s":
             if trade.get("stop_loss") not in (None, "", 0):
                 print("Stop loss specified for sell order. Manual trade skipped.")
@@ -326,11 +330,10 @@ def log_manual_buy(
             f"Manual buy for {ticker} failed: cost {buy_price * shares} exceeds cash balance {cash}."
         )
         return cash, chatgpt_portfolio
-    if stoploss > buy_price:
-        print(
-            f"Manual buy for {ticker} failed: stop loss {stoploss} exceeds buy price {buy_price}."
+    if stoploss >= buy_price:
+        raise ValueError(
+            f"Manual buy for {ticker} failed: stop loss {stoploss} is not below buy price {buy_price}."
         )
-        return cash, chatgpt_portfolio
     pnl = 0.0
 
     log = {
