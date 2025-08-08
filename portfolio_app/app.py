@@ -55,6 +55,7 @@ def ensure_user_files(username: str) -> Tuple[str, str, str, str]:
                 'Date',
                 'Ticker',
                 'Shares',
+                'Buy Price',
                 'Cost Basis',
                 'Stop Loss',
                 'Current Price',
@@ -527,6 +528,7 @@ def get_latest_portfolio(user_id: int):
             positions.append({
                 'Ticker': row['Ticker'],
                 'Shares': row['Shares'],
+                'Buy_Price': row['Buy Price'],
                 'Cost_Basis': row['Cost Basis'],
                 'Current_Price': row['Current Price'],
                 'PnL': row['PnL'],
@@ -577,6 +579,7 @@ def read_sample_portfolio():
             positions.append({
                 'Ticker': row['Ticker'],
                 'Shares': row['Shares'],
+                'Buy_Price': row.get('Buy Price', ''),
                 'Cost_Basis': row['Cost Basis'],
                 'Current_Price': row['Current Price'],
                 'PnL': row['PnL'],
@@ -734,16 +737,18 @@ def api_trade(user_id):
         f.write(str(round(cash, 2)))
 
     with open(portfolio_csv, 'w', newline='') as f:
-        fieldnames = ['Date', 'Ticker', 'Shares', 'Cost Basis', 'Stop Loss', 'Current Price', 'Total Value', 'PnL', 'Action', 'Cash Balance', 'Total Equity']
+        fieldnames = ['Date', 'Ticker', 'Shares', 'Buy Price', 'Cost Basis', 'Stop Loss', 'Current Price', 'Total Value', 'PnL', 'Action', 'Cash Balance', 'Total Equity']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         total_equity = cash
         for t, info in positions.items():
             total_equity += info['cost_basis']
+            buy_price = info['cost_basis'] / info['shares'] if info['shares'] else 0
             writer.writerow({
                 'Date': date,
                 'Ticker': t,
                 'Shares': info['shares'],
+                'Buy Price': buy_price,
                 'Cost Basis': info['cost_basis'],
                 'Stop Loss': info.get('stop_loss', ''),
                 'Current Price': '',
@@ -755,6 +760,7 @@ def api_trade(user_id):
             'Date': date,
             'Ticker': 'TOTAL',
             'Shares': '',
+            'Buy Price': '',
             'Cost Basis': '',
             'Stop Loss': '',
             'Current Price': '',
