@@ -30,14 +30,13 @@ def parse_date(date_str: str, label: str) -> pd.Timestamp:
 
 
 def load_portfolio_details(
-    baseline_equity: float,
     start_date: pd.Timestamp | None,
     end_date: pd.Timestamp | None,
 ) -> pd.DataFrame:
-    """Load and normalise portfolio equity history.
+    """Load portfolio equity history without normalisation.
 
-    The CSV is filtered to the requested timeframe and scaled so the first
-    entry equals ``baseline_equity``.
+    The CSV is filtered to the requested timeframe and returned as-is so the
+    values represent the actual recorded equity for each day.
     """
 
     if not PORTFOLIO_CSV.exists():
@@ -69,11 +68,6 @@ def load_portfolio_details(
 
     mask = (chatgpt_totals["Date"] >= start_date) & (chatgpt_totals["Date"] <= end_date)
     chatgpt_totals = chatgpt_totals.loc[mask].copy()
-
-    baseline_value = float(chatgpt_totals["Total Equity"].iloc[0])
-    scale = baseline_equity / baseline_value
-    chatgpt_totals["Total Equity"] = chatgpt_totals["Total Equity"] * scale
-    chatgpt_totals.iloc[0, chatgpt_totals.columns.get_loc("Total Equity")] = baseline_equity
     return chatgpt_totals
 
 
@@ -98,17 +92,14 @@ def download_sp500(dates: pd.Series, baseline_equity: float = 100.0) -> pd.DataF
 
 
 def main(
-    baseline_equity: float,
     start_date: pd.Timestamp | None,
     end_date: pd.Timestamp | None,
     output: Path | None,
 ) -> None:
     """Generate the comparison graph."""
 
-    if baseline_equity <= 0:
-        raise SystemExit("Baseline equity must be positive.")
-
-    chatgpt_totals = load_portfolio_details(baseline_equity, start_date, end_date)
+    chatgpt_totals = load_portfolio_details(start_date, end_date)
+    baseline_equity = float(chatgpt_totals["Total Equity"].iloc[0])
     sp500 = download_sp500(chatgpt_totals["Date"], baseline_equity)
 
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -116,7 +107,7 @@ def main(
     ax.plot(
         chatgpt_totals["Date"],
         chatgpt_totals["Total Equity"],
-        label=f"ChatGPT (${baseline_equity:.0f} Invested)",
+        label="ChatGPT",
         marker="o",
         color="blue",
         linewidth=2,
@@ -124,7 +115,7 @@ def main(
     ax.plot(
         sp500["Date"],
         sp500["SPX Value"],
-        label=f"S&P 500 (${baseline_equity:.0f} Invested)",
+        label="S&P 500",
         marker="o",
         color="orange",
         linestyle="--",
@@ -135,23 +126,13 @@ def main(
     final_chatgpt = float(chatgpt_totals["Total Equity"].iloc[-1])
     final_spx = float(sp500["SPX Value"].iloc[-1])
 
-    ax.text(
-        final_date,
-        final_chatgpt + 0.3,
-        f"+{final_chatgpt - baseline_equity:.1f}%",
-        color="blue",
-        fontsize=9,
-    )
-    ax.text(
-        final_date,
-        final_spx + 0.9,
-        f"+{final_spx - baseline_equity:.1f}%",
-        color="orange",
-        fontsize=9,
-    )
+    pct_chatgpt = (final_chatgpt - baseline_equity) / baseline_equity * 100
+    pct_spx = (final_spx - baseline_equity) / baseline_equity * 100
+    ax.text(final_date, final_chatgpt + 0.03 * baseline_equity, f"{pct_chatgpt:+.1f}%", color="blue", fontsize=9)
+    ax.text(final_date, final_spx + 0.03 * baseline_equity, f"{pct_spx:+.1f}%", color="orange", fontsize=9)
     ax.set_title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
     ax.set_xlabel("Date")
-    ax.set_ylabel(f"Value of ${baseline_equity:.0f} Investment")
+    ax.set_ylabel("Total Equity ($)")
     ax.legend()
     ax.grid(True)
     fig.autofmt_xdate()
@@ -178,14 +159,6 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot portfolio performance")
     parser.add_argument(
-        "--starting-capital",
-        "--baseline-equity",
-        dest="starting_capital",
-        type=float,
-        default=100.0,
-        help="Starting equity value used for normalisation",
-    )
-    parser.add_argument(
         "--start-date",
         type=str,
         help="Start date for the chart (YYYY-MM-DD)",
@@ -206,5 +179,5 @@ if __name__ == "__main__":
     end = parse_date(args.end_date, "end date") if args.end_date else None
     output = Path(args.output) if args.output else None
 
-    main(args.starting_capital, start, end, output)
+    main(start, end, output)
 

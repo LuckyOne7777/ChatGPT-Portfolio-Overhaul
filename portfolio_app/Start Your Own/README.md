@@ -38,14 +38,14 @@ This script draws a graph of your portfolio versus the S&P 500.
    - Run `Trading_Script.py` at least once so `chatgpt_portfolio_update.csv` has data.
 2. **Run the graph script**
    ```bash
-   python "Start Your Own/Generate_Graph.py" --baseline-equity 100
+   python "Start Your Own/Generate_Graph.py"
    ```
    - Optional flags `--start-date` and `--end-date` accept dates in `YYYY-MM-DD` format. For example:
    ```bash
-   python "Start Your Own/Generate_Graph.py" --baseline-equity 100 --start-date 2023-01-01 --end-date 2023-12-31
+   python "Start Your Own/Generate_Graph.py" --start-date 2023-01-01 --end-date 2023-12-31
    ```
 3. **View the chart**
-   - A window opens showing your portfolio value vs. S&P 500. Results will be adjusted for baseline equity.
+   - A window opens showing your portfolio value vs. S&P 500 using your actual starting equity.
 
 All of this is still VERY NEW, so there is bugs. Please reach out if you find an issue or have a question.
 
