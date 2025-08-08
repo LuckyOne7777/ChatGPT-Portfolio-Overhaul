@@ -109,7 +109,6 @@ def process_portfolio(
     else:  # pragma: no cover - defensive type check
         raise TypeError("portfolio must be a DataFrame, dict, or list of dicts")
 
-    today = _today_str()
     day = _weekday()
 
     results: list[dict[str, object]] = []
@@ -181,7 +180,7 @@ def process_portfolio(
         if data.empty:
             print(f"No data for {ticker}")
             row = {
-                "Date": today,
+                "Date": _today_str(),
                 "Ticker": ticker,
                 "Shares": shares,
                 "Buy Price": buy_price,
@@ -216,7 +215,7 @@ def process_portfolio(
                 total_pnl += pnl
 
             row = {
-                "Date": today,
+                "Date": _today_str(),
                 "Ticker": ticker,
                 "Shares": shares,
                 "Buy Price": buy_price,
@@ -234,7 +233,7 @@ def process_portfolio(
 
     # Append TOTAL summary row
     total_row = {
-        "Date": today,
+        "Date": _today_str(),
         "Ticker": "TOTAL",
         "Shares": "",
         "Buy Price": "",
@@ -253,7 +252,7 @@ def process_portfolio(
     if PORTFOLIO_CSV.exists():
         existing = pd.read_csv(PORTFOLIO_CSV)
         existing = existing.reindex(columns=COLUMNS)
-        existing = existing[existing["Date"] != today]
+        existing = existing[existing["Date"] != _today_str()]
         print("Overwriting today's rows in portfolio CSV...")
         time.sleep(1)
         df = pd.concat([existing, df], ignore_index=True)
@@ -272,10 +271,8 @@ def log_sell(
     portfolio: pd.DataFrame,
 ) -> pd.DataFrame:
     """Record a stop-loss sale in ``TRADE_LOG_CSV`` and remove the ticker."""
-    today = _today_str()
-
     log = {
-        "Date": today,
+        "Date": _today_str(),
         "Ticker": ticker,
         "Shares Sold": shares,
         "Sell Price": price,
@@ -312,8 +309,6 @@ def log_manual_buy(
         Description of why the manual buy occurred. The log will always begin
         with ``"MANUAL BUY -"`` followed by this string.
     """
-    today = _today_str()
-
     data = yf.download(ticker, period="1d")
     data = cast(pd.DataFrame, data)
     if data.empty:
@@ -334,7 +329,7 @@ def log_manual_buy(
     pnl = 0.0
 
     log = {
-        "Date": today,
+        "Date": _today_str(),
         "Ticker": ticker,
         "Shares Bought": shares,
         "Buy Price": buy_price,
@@ -397,8 +392,6 @@ def log_manual_sell(
         Description of why the manual sell occurred. The log will always begin
         with ``"MANUAL SELL -"`` followed by this string.
     """
-    today = _today_str()
-
     if ticker not in chatgpt_portfolio["ticker"].values:
         print(f"Manual sell for {ticker} failed: ticker not in portfolio.")
         return cash, chatgpt_portfolio
@@ -426,7 +419,7 @@ def log_manual_sell(
     cost_basis = buy_price * shares_sold
     pnl = sell_price * shares_sold - cost_basis
     log = {
-        "Date": today,
+        "Date": _today_str(),
         "Ticker": ticker,
         "Shares Bought": "",
         "Buy Price": "",
@@ -462,9 +455,7 @@ def daily_results(chatgpt_portfolio: pd.DataFrame, cash: float) -> None:
     """Print daily price updates and performance metrics."""
     portfolio_dict: list[dict[str, object]] = chatgpt_portfolio.to_dict(orient="records")
 
-    today = _today_str()
-
-    print(f"prices and updates for {today}")
+    print(f"prices and updates for {_today_str()}")
     time.sleep(1)
     for stock in portfolio_dict + [{"ticker": "^RUT"}] + [{"ticker": "IWO"}] + [{"ticker": "XBI"}]:
         ticker = stock["ticker"]
