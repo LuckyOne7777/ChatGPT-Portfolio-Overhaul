@@ -326,6 +326,11 @@ def log_manual_buy(
             f"Manual buy for {ticker} failed: cost {buy_price * shares} exceeds cash balance {cash}."
         )
         return cash, chatgpt_portfolio
+    if stoploss > buy_price:
+        print(
+            f"Manual buy for {ticker} failed: stop loss {stoploss} exceeds buy price {buy_price}."
+        )
+        return cash, chatgpt_portfolio
     pnl = 0.0
 
     log = {
