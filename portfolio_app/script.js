@@ -151,11 +151,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/equity-chart.png', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (!res.ok) throw new Error('Failed to load equity chart');
+            if (!res.ok) {
+                let msg = 'Failed to load equity chart';
+                try {
+                    const errData = await res.json();
+                    if (errData && errData.message) {
+                        msg = errData.message;
+                    }
+                } catch (_) {
+                    try {
+                        msg = await res.text();
+                    } catch (_) {
+                        /* ignore */
+                    }
+                }
+                throw new Error(msg);
+            }
             const blob = await res.blob();
             chart.src = URL.createObjectURL(blob);
         } catch (err) {
-            showError('Failed to load equity chart', err);
+            showError(err.message || 'Failed to load equity chart', err);
         }
     }
 

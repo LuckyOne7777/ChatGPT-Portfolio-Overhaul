@@ -328,7 +328,14 @@ def user_chart_png(user_id):
 
     generate_graph.PORTFOLIO_CSV = Path(portfolio_csv)
 
-    chatgpt_totals = generate_graph.load_portfolio_details(None, None)
+    try:
+        chatgpt_totals = generate_graph.load_portfolio_details(None, None)
+    except SystemExit:
+        return jsonify({'message': 'No portfolio data available to plot'}), 400
+
+    if chatgpt_totals.empty:
+        return jsonify({'message': 'No portfolio data available to plot'}), 400
+
     if baseline_equity is None:
         baseline_equity = float(chatgpt_totals['Total Equity'].iloc[0])
 
