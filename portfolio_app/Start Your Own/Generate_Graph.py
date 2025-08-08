@@ -23,7 +23,7 @@ def load_portfolio_totals() -> pd.DataFrame:
 
 def download_sp500(start_date: pd.Timestamp, end_date: pd.Timestamp, baseline_equity: float) -> pd.DataFrame:
     """Download S&P 500 prices and scale to the starting equity."""
-    sp500 = yf.download("^SPX", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False)
+    sp500 = yf.download("^GSPC", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False)
     sp500 = sp500.reset_index()
     if isinstance(sp500.columns, pd.MultiIndex):
         sp500.columns = sp500.columns.get_level_values(0)

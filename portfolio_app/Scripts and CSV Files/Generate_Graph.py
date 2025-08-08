@@ -81,7 +81,7 @@ def download_sp500(dates: pd.Series, baseline_equity: float = 100.0) -> pd.DataF
     start_date = dates.min()
     end_date = dates.max()
     sp500 = yf.download(
-        "^SPX", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False
+        "^GSPC", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False
     )
     sp500 = cast(pd.DataFrame, sp500)["Close"]
 
