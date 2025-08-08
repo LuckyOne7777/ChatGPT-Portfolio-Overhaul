@@ -246,8 +246,8 @@ def sample_chart_png():
     generate_graph = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(generate_graph)
 
-    baseline_equity = 100.0
-    chatgpt_totals = generate_graph.load_portfolio_details(baseline_equity, None, None)
+    chatgpt_totals = generate_graph.load_portfolio_details(None, None)
+    baseline_equity = float(chatgpt_totals['Total Equity'].iloc[0])
 
     fallback = Path(__file__).resolve().parent / 'week4_performance.png'
     try:
@@ -263,7 +263,7 @@ def sample_chart_png():
     ax.plot(
         chatgpt_totals['Date'],
         chatgpt_totals['Total Equity'],
-        label=f'ChatGPT (${baseline_equity:.0f} Invested)',
+        label='ChatGPT',
         marker='o',
         color='blue',
         linewidth=2,
@@ -271,7 +271,7 @@ def sample_chart_png():
     ax.plot(
         sp500['Date'],
         sp500['SPX Value'],
-        label=f'S&P 500 (${baseline_equity:.0f} Invested)',
+        label='S&P 500',
         marker='o',
         color='orange',
         linestyle='--',
@@ -281,12 +281,14 @@ def sample_chart_png():
     final_date = chatgpt_totals['Date'].iloc[-1]
     final_chatgpt = float(chatgpt_totals['Total Equity'].iloc[-1])
     final_spx = float(sp500['SPX Value'].iloc[-1])
-    ax.text(final_date, final_chatgpt + 0.3, f"+{final_chatgpt - baseline_equity:.1f}%", color='blue', fontsize=9)
-    ax.text(final_date, final_spx + 0.9, f"+{final_spx - baseline_equity:.1f}%", color='orange', fontsize=9)
+    pct_chatgpt = (final_chatgpt - baseline_equity) / baseline_equity * 100
+    pct_spx = (final_spx - baseline_equity) / baseline_equity * 100
+    ax.text(final_date, final_chatgpt + 0.03 * baseline_equity, f"{pct_chatgpt:+.1f}%", color='blue', fontsize=9)
+    ax.text(final_date, final_spx + 0.03 * baseline_equity, f"{pct_spx:+.1f}%", color='orange', fontsize=9)
 
     ax.set_title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
     ax.set_xlabel('Date')
-    ax.set_ylabel(f'Value of ${baseline_equity:.0f} Investment')
+    ax.set_ylabel('Total Equity ($)')
     ax.legend()
     ax.grid(True)
     fig.autofmt_xdate()
@@ -316,7 +318,7 @@ def user_chart_png(user_id):
         with open(starting_equity_file) as f:
             baseline_equity = float(f.read().strip())
     except Exception:
-        baseline_equity = 100.0
+        baseline_equity = None
 
     script_path = Path(__file__).resolve().parent / 'Scripts and CSV Files' / 'Generate_Graph.py'
 
@@ -326,7 +328,9 @@ def user_chart_png(user_id):
 
     generate_graph.PORTFOLIO_CSV = Path(portfolio_csv)
 
-    chatgpt_totals = generate_graph.load_portfolio_details(baseline_equity, None, None)
+    chatgpt_totals = generate_graph.load_portfolio_details(None, None)
+    if baseline_equity is None:
+        baseline_equity = float(chatgpt_totals['Total Equity'].iloc[0])
 
     try:
         sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
@@ -338,14 +342,14 @@ def user_chart_png(user_id):
         ax.plot(
             chatgpt_totals['Date'],
             chatgpt_totals['Total Equity'],
-            label=f'{username} (${baseline_equity:.0f} Invested)',
+            label=f'{username}',
             marker='o',
             color='blue',
             linewidth=2,
         )
         ax.set_title('Portfolio Performance')
         ax.set_xlabel('Date')
-        ax.set_ylabel(f'Value of ${baseline_equity:.0f} Investment')
+        ax.set_ylabel('Total Equity ($)')
         ax.legend()
         ax.grid(True)
         fig.autofmt_xdate()
@@ -360,7 +364,7 @@ def user_chart_png(user_id):
     ax.plot(
         chatgpt_totals['Date'],
         chatgpt_totals['Total Equity'],
-        label=f'{username} (${baseline_equity:.0f} Invested)',
+        label=f'{username}',
         marker='o',
         color='blue',
         linewidth=2,
@@ -368,7 +372,7 @@ def user_chart_png(user_id):
     ax.plot(
         sp500['Date'],
         sp500['SPX Value'],
-        label=f'S&P 500 (${baseline_equity:.0f} Invested)',
+        label='S&P 500',
         marker='o',
         color='orange',
         linestyle='--',
@@ -378,12 +382,14 @@ def user_chart_png(user_id):
     final_date = chatgpt_totals['Date'].iloc[-1]
     final_chatgpt = float(chatgpt_totals['Total Equity'].iloc[-1])
     final_spx = float(sp500['SPX Value'].iloc[-1])
-    ax.text(final_date, final_chatgpt + 0.3, f"+{final_chatgpt - baseline_equity:.1f}%", color='blue', fontsize=9)
-    ax.text(final_date, final_spx + 0.9, f"+{final_spx - baseline_equity:.1f}%", color='orange', fontsize=9)
+    pct_chatgpt = (final_chatgpt - baseline_equity) / baseline_equity * 100
+    pct_spx = (final_spx - baseline_equity) / baseline_equity * 100
+    ax.text(final_date, final_chatgpt + 0.03 * baseline_equity, f"{pct_chatgpt:+.1f}%", color='blue', fontsize=9)
+    ax.text(final_date, final_spx + 0.03 * baseline_equity, f"{pct_spx:+.1f}%", color='orange', fontsize=9)
 
     ax.set_title("Portfolio vs. S&P 500")
     ax.set_xlabel('Date')
-    ax.set_ylabel(f'Value of ${baseline_equity:.0f} Investment')
+    ax.set_ylabel('Total Equity ($)')
     ax.legend()
     ax.grid(True)
     fig.autofmt_xdate()
