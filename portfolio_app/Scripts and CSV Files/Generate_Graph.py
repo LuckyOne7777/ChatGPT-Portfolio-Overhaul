@@ -13,7 +13,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import yfinance as yf
-from typing import cast
 
 DATA_DIR = Path(__file__).resolve().parent
 PORTFOLIO_CSV = DATA_DIR / "chatgpt_portfolio_update.csv"
@@ -72,22 +71,23 @@ def load_portfolio_details(
 
 
 def download_sp500(dates: pd.Series, baseline_equity: float = 100.0) -> pd.DataFrame:
-    """Download S&P 500 prices and align them with ``dates``.
-
-    Any missing benchmark values are forward filled to ensure the returned
-    DataFrame has a 1:1 match with the portfolio's timeline.
-    """
+    """Download S&P 500 prices and align them 1:1 with portfolio dates."""
 
     start_date = dates.min()
     end_date = dates.max()
-    sp500 = yf.download(
-        "^GSPC", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False
-    )
-    sp500 = cast(pd.DataFrame, sp500)["Close"]
 
-    aligned = sp500.reindex(pd.to_datetime(dates)).ffill().bfill().interpolate()
+    sp500 = yf.download(
+        "^GSPC",
+        start=start_date - pd.Timedelta(days=3),
+        end=end_date + pd.Timedelta(days=3),
+        progress=False,
+    )["Close"]
+
+    aligned = sp500.reindex(pd.to_datetime(dates)).ffill().bfill()
+
     base_price = aligned.iloc[0]
     values = aligned / base_price * baseline_equity
+
     return pd.DataFrame({"Date": pd.to_datetime(dates), "SPX Value": values})
 
 
