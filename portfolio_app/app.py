@@ -252,7 +252,7 @@ def sample_chart_png():
     fallback = Path(__file__).resolve().parent / 'week4_performance.png'
     try:
         sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
-        if sp500.empty:
+        if sp500['SPX Value'].isna().all():
             raise ValueError('Empty SP500 data')
     except Exception:
         # Fall back to a pre-generated chart so the sample page always works
@@ -334,7 +334,7 @@ def user_chart_png(user_id):
 
     try:
         sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
-        if sp500.empty:
+        if sp500['SPX Value'].isna().all():
             raise ValueError('No benchmark data')
     except Exception:
         plt.style.use('seaborn-v0_8-whitegrid')
