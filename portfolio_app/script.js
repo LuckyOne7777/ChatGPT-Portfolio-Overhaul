@@ -189,6 +189,18 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             const stopLossInput = document.getElementById('trade-stop-loss').value.trim();
             if (stopLossInput) {
+                let valid = false;
+                if (stopLossInput.endsWith('%')) {
+                    const val = parseFloat(stopLossInput.slice(0, -1));
+                    if (!isNaN(val) && val >= 0) valid = true;
+                } else {
+                    const val = parseFloat(stopLossInput);
+                    if (!isNaN(val) && val >= 0) valid = true;
+                }
+                if (!valid) {
+                    showError('Invalid stop loss value', undefined, 'tradeErrorMessage');
+                    return;
+                }
                 payload.stop_loss = stopLossInput;
             }
             try {
