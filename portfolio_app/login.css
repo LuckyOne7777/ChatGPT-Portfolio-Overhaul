@@ -49,6 +49,20 @@ body {
     background: transparent;
 }
 
+.input-group .toggle-password {
+    background: transparent;
+    border: none;
+    color: #764ba2;
+    cursor: pointer;
+    padding: 0;
+    margin: 0 0 0 5px;
+    width: auto;
+}
+
+.input-group .toggle-password:hover {
+    background: transparent;
+}
+
 button {
     width: 100%;
     padding: 10px;

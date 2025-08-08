@@ -22,6 +22,7 @@
             <i class="fas fa-lock"></i>
             <label class="visually-hidden" for="login-password">Password</label>
             <input type="password" id="login-password" placeholder="Password" required>
+            <button type="button" id="login-toggle-password" class="toggle-password" aria-label="Show password"><i class="fas fa-eye"></i></button>
         </div>
         <button type="submit">Login</button>
         <p id="error" class="error-message" role="alert"></p>
@@ -29,6 +30,14 @@
     <p><a href="/sample-portfolio">View Sample Portfolio</a></p>
 </div>
 <script>
+const loginPassword = document.getElementById('login-password');
+const loginToggle = document.getElementById('login-toggle-password');
+loginToggle.addEventListener('click', () => {
+    const type = loginPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+    loginPassword.setAttribute('type', type);
+    loginToggle.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+});
+
 document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const errorEl = document.getElementById('error');
