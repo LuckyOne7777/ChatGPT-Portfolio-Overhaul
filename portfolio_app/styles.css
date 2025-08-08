@@ -23,6 +23,12 @@
     border: 0;
 }
 
+#tradeErrorMessage {
+    display: inline-block;
+    color: red;
+    margin-left: 0.5rem;
+}
+
 body {
     font-family: 'Poppins', Arial, sans-serif;
     margin: 0;
