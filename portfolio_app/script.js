@@ -188,10 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 reason: document.getElementById('trade-reason').value.trim(),
             };
             const stopLossInput = document.getElementById('trade-stop-loss').value.trim();
-            if (stopLossInput >= price){
-                showError('Invalid stop loss value', undefined, 'tradeErrorMessage');
-                    return;
-            }
+            const price = payload.price;
             if (stopLossInput) {
                 let valid = false;
                 if (stopLossInput.endsWith('%')) {
@@ -199,7 +196,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!isNaN(val) && val >= 0) valid = true;
                 } else {
                     const val = parseFloat(stopLossInput);
-                    if (!isNaN(val) && val >= 0) valid = true;
+                    if (!isNaN(val) && val >= 0) {
+                        if (val >= price) {
+                            showError('Stop loss must be below price', undefined, 'tradeErrorMessage');
+                            return;
+                        }
+                        valid = true;
+                    }
                 }
                 if (!valid) {
                     showError('Invalid stop loss value', undefined, 'tradeErrorMessage');
