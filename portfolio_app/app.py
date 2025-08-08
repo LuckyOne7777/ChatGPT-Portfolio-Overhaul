@@ -540,16 +540,34 @@ def get_latest_portfolio(user_id: int):
             total_equity = row.get('Total Equity') or row.get('Cash Balance')
             cash = row.get('Cash Balance') or '0'
 
+    # Fallbacks when TOTAL is cash-only (pre-processing) or missing
     if total_equity is None and os.path.exists(cash_file):
         with open(cash_file) as f:
             cash = f.read().strip() or '0'
         total_equity = cash
 
+    # Sum cost basis for *latest-date* positions to infer deployed when needed
     try:
-        deployed_capital = float(total_equity or 0) - float(cash or 0)
+        deployed_cost_basis = sum(
+            float(r.get('Cost Basis') or 0)
+            for r in rows
+            if r.get('Date') == latest_date and r.get('Ticker') != 'TOTAL'
+        )
     except ValueError:
-        deployed_capital = 0.0
+        deployed_cost_basis = 0.0
 
+    # If TOTAL equals cash (cash-only write), infer total = cash + deployed_cost_basis
+    try:
+        total_equity_val = float(total_equity or 0)
+        cash_val = float(cash or 0)
+    except ValueError:
+        total_equity_val, cash_val = 0.0, 0.0
+
+    if abs(total_equity_val - cash_val) < 1e-9 and deployed_cost_basis > 0:
+        total_equity_val = cash_val + deployed_cost_basis
+        total_equity = f"{total_equity_val:.2f}"
+
+    deployed_capital = max(total_equity_val - cash_val, 0.0)
     return positions, cash, f"{deployed_capital:.2f}", total_equity, starting_capital
 
 
