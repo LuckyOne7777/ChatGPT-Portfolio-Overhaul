@@ -84,6 +84,10 @@ def download_sp500(dates: pd.Series, baseline_equity: float = 100.0) -> pd.DataF
     )["Close"]
 
     aligned = sp500.reindex(pd.to_datetime(dates)).ffill().bfill()
+    if aligned.isna().all():
+        raise ValueError("SPX has no data after alignment")
+    if aligned.isna().any():
+        print("Warning: SPX has NaNs after alignment")
 
     base_price = aligned.iloc[0]
     values = aligned / base_price * baseline_equity
@@ -101,6 +105,8 @@ def main(
     chatgpt_totals = load_portfolio_details(start_date, end_date)
     baseline_equity = float(chatgpt_totals["Total Equity"].iloc[0])
     sp500 = download_sp500(chatgpt_totals["Date"], baseline_equity)
+    if sp500["SPX Value"].isna().all():
+        raise ValueError("S&P 500 data is empty after alignment")
 
     plt.style.use("seaborn-v0_8-whitegrid")
     fig, ax = plt.subplots(figsize=(10, 6))
