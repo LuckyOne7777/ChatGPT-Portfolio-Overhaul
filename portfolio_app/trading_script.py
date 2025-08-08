@@ -15,6 +15,21 @@ from typing import Any
 import os
 import time
 
+COLUMNS = [
+    "Date",
+    "Ticker",
+    "Shares",
+    "Buy Price",
+    "Cost Basis",
+    "Stop Loss",
+    "Current Price",
+    "Total Value",
+    "PnL",
+    "Action",
+    "Cash Balance",
+    "Total Equity",
+]
+
 # Shared file locations
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR  # Save files in the same folder as this script
@@ -152,8 +167,8 @@ def process_portfolio(
     for _, stock in portfolio_df.iterrows():
         ticker = stock["ticker"]
         shares = int(stock["shares"])
-        cost = stock["buy_price"]
-        cost_basis = cost * shares
+        buy_price = stock["buy_price"]
+        cost_basis = buy_price * shares
         stop = stock["stop_loss"]
         data = yf.Ticker(ticker).history(period="1d")
 
@@ -163,7 +178,7 @@ def process_portfolio(
                 "Date": today,
                 "Ticker": ticker,
                 "Shares": shares,
-                "Buy Price": cost,
+                "Buy Price": buy_price,
                 "Cost Basis": cost_basis,
                 "Stop Loss": stop,
                 "Current Price": "",
@@ -180,14 +195,16 @@ def process_portfolio(
             if low_price <= stop:
                 price = stop
                 value = round(price * shares, 2)
-                pnl = round((price - cost) * shares, 2)
+                pnl = round((price - buy_price) * shares, 2)
                 action = "SELL - Stop Loss Triggered"
                 cash += value
-                portfolio_df = log_sell(ticker, shares, price, cost, pnl, portfolio_df)
+                portfolio_df = log_sell(
+                    ticker, shares, price, buy_price, pnl, portfolio_df
+                )
             else:
                 price = close_price
                 value = round(price * shares, 2)
-                pnl = round((price - cost) * shares, 2)
+                pnl = round((price - buy_price) * shares, 2)
                 action = "HOLD"
                 total_value += value
                 total_pnl += pnl
@@ -196,7 +213,7 @@ def process_portfolio(
                 "Date": today,
                 "Ticker": ticker,
                 "Shares": shares,
-                "Buy Price": cost,
+                "Buy Price": buy_price,
                 "Cost Basis": cost_basis,
                 "Stop Loss": stop,
                 "Current Price": price,
@@ -229,11 +246,13 @@ def process_portfolio(
     df = pd.DataFrame(results)
     if PORTFOLIO_CSV.exists():
         existing = pd.read_csv(PORTFOLIO_CSV)
+        existing = existing.reindex(columns=COLUMNS)
         existing = existing[existing["Date"] != today]
         print("rows for today already logged, not saving results to CSV...")
         time.sleep(1)
         df = pd.concat([existing, df], ignore_index=True)
 
+    df = df[COLUMNS]
     df.to_csv(PORTFOLIO_CSV, index=False)
     return portfolio_df, cash
 
@@ -550,10 +569,29 @@ def load_latest_portfolio_state(
 
     # Get all tickers from the latest date
     latest_tickers = non_total[non_total["Date"] == latest_date].copy()
-    latest_tickers.drop(columns=["Date", "Cash Balance", "Total Equity", "Action", "Current Price", "PnL", "Total Value"], inplace=True)
-    # Delete costbasis being renamed as buy_price
-    latest_tickers.rename(columns={"Cost Basis": "cost_basis", "Buy Price": "buy_price", "Shares": "shares", "Ticker": "ticker", "Stop Loss": "stop_loss"}, inplace=True)
-    latest_tickers = latest_tickers.reset_index(drop=True).to_dict(orient='records')
+    latest_tickers.drop(
+        columns=[
+            "Date",
+            "Cash Balance",
+            "Total Equity",
+            "Action",
+            "Current Price",
+            "PnL",
+            "Total Value",
+        ],
+        inplace=True,
+    )
+    latest_tickers.rename(
+        columns={
+            "Cost Basis": "cost_basis",
+            "Shares": "shares",
+            "Ticker": "ticker",
+            "Stop Loss": "stop_loss",
+            "Buy Price": "buy_price",
+        },
+        inplace=True,
+    )
+    latest_tickers = latest_tickers.reset_index(drop=True).to_dict(orient="records")
     df = df[df["Ticker"] == "TOTAL"]  # Only the total summary rows
     df["Date"] = pd.to_datetime(df["Date"])
     latest = df.sort_values("Date").iloc[-1]

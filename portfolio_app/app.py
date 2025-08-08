@@ -55,6 +55,7 @@ def ensure_user_files(username: str) -> Tuple[str, str, str, str]:
                 'Date',
                 'Ticker',
                 'Shares',
+                'Buy Price',
                 'Cost Basis',
                 'Stop Loss',
                 'Current Price',
@@ -475,8 +476,15 @@ def api_set_cash(user_id):
     _, _, _, cash_file, starting_equity_file = get_user_files(user_id)
     with open(cash_file, 'w') as f:
         f.write(str(round(amount, 2)))
-    with open(starting_equity_file, 'w') as f:
-        f.write(str(round(amount, 2)))
+    # Only set the starting capital if it hasn't been recorded yet. This prevents
+    # later cash adjustments from overwriting the initial starting equity and
+    # misreporting the portfolio's performance baseline.
+    if not (
+        os.path.exists(starting_equity_file)
+        and os.path.getsize(starting_equity_file) > 0
+    ):
+        with open(starting_equity_file, 'w') as f:
+            f.write(str(round(amount, 2)))
     return jsonify({'message': 'Cash balance set'})
 
 
@@ -516,6 +524,11 @@ def get_latest_portfolio(user_id: int):
                 earliest_total.get('Total Equity')
                 or earliest_total.get('Cash Balance')
             )
+            # Persist the inferred starting capital so it remains stable on
+            # subsequent reads, even if historical CSV rows are modified.
+            if starting_capital is not None:
+                with open(starting_equity_file, 'w') as f:
+                    f.write(str(starting_capital))
 
     non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
     latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
@@ -527,6 +540,7 @@ def get_latest_portfolio(user_id: int):
             positions.append({
                 'Ticker': row['Ticker'],
                 'Shares': row['Shares'],
+                'Buy_Price': row['Buy Price'],
                 'Cost_Basis': row['Cost Basis'],
                 'Current_Price': row['Current Price'],
                 'PnL': row['PnL'],
@@ -577,6 +591,7 @@ def read_sample_portfolio():
             positions.append({
                 'Ticker': row['Ticker'],
                 'Shares': row['Shares'],
+                'Buy_Price': row.get('Buy Price', ''),
                 'Cost_Basis': row['Cost Basis'],
                 'Current_Price': row['Current Price'],
                 'PnL': row['PnL'],
@@ -734,16 +749,18 @@ def api_trade(user_id):
         f.write(str(round(cash, 2)))
 
     with open(portfolio_csv, 'w', newline='') as f:
-        fieldnames = ['Date', 'Ticker', 'Shares', 'Cost Basis', 'Stop Loss', 'Current Price', 'Total Value', 'PnL', 'Action', 'Cash Balance', 'Total Equity']
+        fieldnames = ['Date', 'Ticker', 'Shares', 'Buy Price', 'Cost Basis', 'Stop Loss', 'Current Price', 'Total Value', 'PnL', 'Action', 'Cash Balance', 'Total Equity']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         total_equity = cash
         for t, info in positions.items():
             total_equity += info['cost_basis']
+            buy_price = info['cost_basis'] / info['shares'] if info['shares'] else 0
             writer.writerow({
                 'Date': date,
                 'Ticker': t,
                 'Shares': info['shares'],
+                'Buy Price': buy_price,
                 'Cost Basis': info['cost_basis'],
                 'Stop Loss': info.get('stop_loss', ''),
                 'Current Price': '',
@@ -755,6 +772,7 @@ def api_trade(user_id):
             'Date': date,
             'Ticker': 'TOTAL',
             'Shares': '',
+            'Buy Price': '',
             'Cost Basis': '',
             'Stop Loss': '',
             'Current Price': '',
