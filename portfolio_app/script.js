@@ -188,6 +188,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 reason: document.getElementById('trade-reason').value.trim(),
             };
             const stopLossInput = document.getElementById('trade-stop-loss').value.trim();
+            if (stopLossInput >= price){
+                showError('Invalid stop loss value', undefined, 'tradeErrorMessage');
+                    return;
+            }
             if (stopLossInput) {
                 let valid = false;
                 if (stopLossInput.endsWith('%')) {

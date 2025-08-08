@@ -1,14 +1,17 @@
-# Ignore SQLite database and bytecode artifacts
+# Ignore SQLite DB and Python cache
 **/users.db
 **/__pycache__/
 **/*.pyc
 **/.pytest_cache/
 
-# Ignore ALL CSV files
+# Ignore ALL CSV files by default
 *.csv
-.txt
 
-# EXCEPT keep these tracked
+# Keep specific CSVs
+!Scripts and CSV Files/
 !Scripts and CSV Files/chatgpt_portfolio_update.csv
 !Scripts and CSV Files/chatgpt_trade_log.csv
 !Scripts and CSV Files/chatgpt_portfolio.csv
+
+# Ignore ALL TXT files
+*.txt
