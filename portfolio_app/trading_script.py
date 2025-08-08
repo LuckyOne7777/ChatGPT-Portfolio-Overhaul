@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import Any
+from typing import Any, cast
 import os
 import time
 
@@ -53,10 +53,13 @@ def set_data_dir(data_dir: Path) -> None:
     PORTFOLIO_CSV = DATA_DIR / "chatgpt_portfolio_update.csv"
     TRADE_LOG_CSV = DATA_DIR / "chatgpt_trade_log.csv"
 
-# Today's date reused across logs
-today = datetime.today().strftime("%Y-%m-%d")
-now = datetime.now()
-day = now.weekday()
+
+def _today_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _weekday() -> int:
+    return datetime.now().weekday()
 
 
 def is_valid_ticker(ticker: str) -> bool:
@@ -105,6 +108,9 @@ def process_portfolio(
         portfolio_df = pd.DataFrame(portfolio)
     else:  # pragma: no cover - defensive type check
         raise TypeError("portfolio must be a DataFrame, dict, or list of dicts")
+
+    today = _today_str()
+    day = _weekday()
 
     results: list[dict[str, object]] = []
     total_value = 0.0
@@ -248,7 +254,7 @@ def process_portfolio(
         existing = pd.read_csv(PORTFOLIO_CSV)
         existing = existing.reindex(columns=COLUMNS)
         existing = existing[existing["Date"] != today]
-        print("rows for today already logged, not saving results to CSV...")
+        print("Overwriting today's rows in portfolio CSV...")
         time.sleep(1)
         df = pd.concat([existing, df], ignore_index=True)
 
@@ -266,6 +272,8 @@ def log_sell(
     portfolio: pd.DataFrame,
 ) -> pd.DataFrame:
     """Record a stop-loss sale in ``TRADE_LOG_CSV`` and remove the ticker."""
+    today = _today_str()
+
     log = {
         "Date": today,
         "Ticker": ticker,
@@ -304,6 +312,8 @@ def log_manual_buy(
         Description of why the manual buy occurred. The log will always begin
         with ``"MANUAL BUY -"`` followed by this string.
     """
+    today = _today_str()
+
     data = yf.download(ticker, period="1d")
     data = cast(pd.DataFrame, data)
     if data.empty:
@@ -357,9 +367,14 @@ def log_manual_buy(
     else:
         row_index = chatgpt_portfolio[mask].index[0]
         current_shares = float(chatgpt_portfolio.at[row_index, "shares"])
-        chatgpt_portfolio.at[row_index, "shares"] = current_shares + shares
         current_cost_basis = float(chatgpt_portfolio.at[row_index, "cost_basis"])
-        chatgpt_portfolio.at[row_index, "cost_basis"] = shares * buy_price + current_cost_basis
+
+        new_shares = current_shares + shares
+        new_cost_basis = current_cost_basis + shares * buy_price
+
+        chatgpt_portfolio.at[row_index, "shares"] = new_shares
+        chatgpt_portfolio.at[row_index, "cost_basis"] = new_cost_basis
+        chatgpt_portfolio.at[row_index, "buy_price"] = new_cost_basis / new_shares
         chatgpt_portfolio.at[row_index, "stop_loss"] = stoploss
     cash = cash - shares * buy_price
     print(f"Manual buy for {ticker} complete!")
@@ -382,6 +397,8 @@ def log_manual_sell(
         Description of why the manual sell occurred. The log will always begin
         with ``"MANUAL SELL -"`` followed by this string.
     """
+    today = _today_str()
+
     if ticker not in chatgpt_portfolio["ticker"].values:
         print(f"Manual sell for {ticker} failed: ticker not in portfolio.")
         return cash, chatgpt_portfolio
@@ -430,11 +447,11 @@ def log_manual_sell(
         chatgpt_portfolio = chatgpt_portfolio[chatgpt_portfolio["ticker"] != ticker]
     else:
         row_index = ticker_row.index[0]
-        chatgpt_portfolio.at[row_index, "shares"] = total_shares - shares_sold
-        chatgpt_portfolio.at[row_index, "cost_basis"] = (
-            chatgpt_portfolio.at[row_index, "shares"]
-            * chatgpt_portfolio.at[row_index, "buy_price"]
-        )
+        remaining_shares = total_shares - shares_sold
+        chatgpt_portfolio.at[row_index, "shares"] = remaining_shares
+        remaining_cost_basis = chatgpt_portfolio.at[row_index, "buy_price"] * remaining_shares
+        chatgpt_portfolio.at[row_index, "cost_basis"] = remaining_cost_basis
+        chatgpt_portfolio.at[row_index, "buy_price"] = remaining_cost_basis / remaining_shares
 
     cash = cash + shares_sold * sell_price
     print(f"manual sell for {ticker} complete!")
@@ -444,6 +461,8 @@ def log_manual_sell(
 def daily_results(chatgpt_portfolio: pd.DataFrame, cash: float) -> None:
     """Print daily price updates and performance metrics."""
     portfolio_dict: list[dict[str, object]] = chatgpt_portfolio.to_dict(orient="records")
+
+    today = _today_str()
 
     print(f"prices and updates for {today}")
     time.sleep(1)
@@ -470,7 +489,8 @@ def daily_results(chatgpt_portfolio: pd.DataFrame, cash: float) -> None:
     # Filter TOTAL rows and get latest equity
     chatgpt_totals = chatgpt_df[chatgpt_df["Ticker"] == "TOTAL"].copy()
     chatgpt_totals["Date"] = pd.to_datetime(chatgpt_totals["Date"])
-    final_date = chatgpt_totals["Date"].max()
+    dates = chatgpt_totals["Date"].sort_values()
+    final_date = dates.max()
     final_value = chatgpt_totals[chatgpt_totals["Date"] == final_date]
     final_equity = float(final_value["Total Equity"].values[0])
     equity_series = chatgpt_totals["Total Equity"].astype(float).reset_index(drop=True)
@@ -489,25 +509,34 @@ def daily_results(chatgpt_portfolio: pd.DataFrame, cash: float) -> None:
     std_daily = daily_pct.std()
     negative_pct = daily_pct[daily_pct < 0]
     negative_std = negative_pct.std()
+    horizon = len(daily_pct)
     # Sharpe Ratio
-    sharpe_total = (total_return - rf_period) / (std_daily * np.sqrt(n_days))
+    sharpe_total = (total_return - rf_period) / (std_daily * np.sqrt(horizon))
     # Sortino Ratio
-    sortino_total = (total_return - rf_period) / (negative_std * np.sqrt(n_days))
+    sortino_total = (total_return - rf_period) / (negative_std * np.sqrt(horizon))
 
     # Output
     print(f"Total Sharpe Ratio over {n_days} days: {sharpe_total:.4f}")
     print(f"Total Sortino Ratio over {n_days} days: {sortino_total:.4f}")
     print(f"Latest ChatGPT Equity: ${final_equity:.2f}")
-    # Get S&P 500 data
-    spx = yf.download("^SPX", start="2025-06-27", end=final_date + pd.Timedelta(days=1), progress=False)
-    spx = cast(pd.DataFrame, spx)
-    spx = spx.reset_index()
 
-    # Normalize to $100
-    initial_price = spx["Close"].iloc[0].item()
-    price_now = spx["Close"].iloc[-1].item()
-    scaling_factor = 100 / initial_price
-    spx_value = price_now * scaling_factor
+    # Download SPX through final_date and reindex to portfolio dates
+    spx = yf.download("^GSPC", start=dates.min(), end=final_date + pd.Timedelta(days=1), progress=False)
+    spx = cast(pd.DataFrame, spx)
+    spx = spx["Close"].to_frame("SPX_Close")
+    spx.index = pd.to_datetime(spx.index)
+
+    # Reindex SPX to exactly the portfolio dates and forward-fill
+    spx = spx.reindex(dates).ffill()
+
+    # Normalize both to the same baseline (first portfolio equity)
+    baseline_equity = float(chatgpt_totals["Total Equity"].iloc[0])
+    spx_base = float(spx["SPX_Close"].iloc[0])
+
+    chatgpt_indexed = chatgpt_totals["Total Equity"] / baseline_equity * 100.0
+    spx_indexed = spx["SPX_Close"] / spx_base * 100.0
+
+    spx_value = float(spx_indexed.iloc[-1])
     print(f"$100 Invested in the S&P 500: ${spx_value:.2f}")
     print("today's portfolio:")
     print(chatgpt_portfolio)
