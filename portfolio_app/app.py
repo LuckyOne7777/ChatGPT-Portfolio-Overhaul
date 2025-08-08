@@ -194,6 +194,11 @@ def serve_dashboard():
     return send_from_directory('.', 'index.html')
 
 
+@app.route('/about')
+def serve_about():
+    return send_from_directory('.', 'about.html')
+
+
 @app.route('/script.js')
 def serve_script():
     return send_from_directory('.', 'script.js')
