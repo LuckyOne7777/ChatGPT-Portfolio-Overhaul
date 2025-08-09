@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import wraps
+import io
 import os
 import sqlite3
 
 import jwt
 import pandas as pd
-from flask import Flask, jsonify, request, render_template
+import matplotlib.pyplot as plt
+from flask import Flask, jsonify, request, render_template, send_file
 from flask_bcrypt import Bcrypt
 
 import trading_script as ts
@@ -233,6 +235,28 @@ def api_equity_history(user_id):
         {"date": h.date.isoformat(), "equity": float(h.portfolio_equity)} for h in history
     ]
     return jsonify({"history": rows})
+
+
+@app.route("/api/equity-chart.png")
+@token_required
+def api_equity_chart(user_id):
+    with begin_tx() as session:
+        history = get_equity_series(session)
+    if not history:
+        return jsonify({"message": "No equity history"}), 404
+    dates = [h.date for h in history]
+    equity = [float(h.portfolio_equity) for h in history]
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(dates, equity, label="Portfolio")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Portfolio Equity ($)")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
 
 @app.route("/api/process-portfolio", methods=["POST"])
 @token_required
