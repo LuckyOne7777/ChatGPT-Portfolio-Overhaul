@@ -100,15 +100,20 @@ def log_manual_buy(
     chatgpt_portfolio: pd.DataFrame,
     reason: str = "New position",
 ) -> tuple[float, pd.DataFrame]:
-    data = yf.download(ticker, period="1d")
+    try:
+        data = yf.Ticker(ticker).history(period="1d")
+    except Exception as e:  # pragma: no cover - network errors
+        data = pd.DataFrame()
+        print(f"Warning: could not fetch market data for {ticker}: {e}")
     if data.empty:
-        raise ValueError(f"Manual buy for {ticker} failed: no market data available.")
-    day_high = float(data["High"].iloc[-1])
-    day_low = float(data["Low"].iloc[-1])
-    if not (day_low <= buy_price <= day_high):
-        raise ValueError(
-            f"Manual buy for {ticker} at {buy_price} failed: price outside today's range {round(day_low, 2)}-{round(day_high, 2)}."
-        )
+        print(f"Warning: market data for {ticker} unavailable; skipping price validation.")
+    else:
+        day_high = float(data["High"].iloc[-1])
+        day_low = float(data["Low"].iloc[-1])
+        if not (day_low <= buy_price <= day_high):
+            raise ValueError(
+                f"Manual buy for {ticker} at {buy_price} failed: price outside today's range {round(day_low, 2)}-{round(day_high, 2)}."
+            )
     cost = Decimal(str(buy_price)) * Decimal(str(shares))
     with begin_tx() as session:
         cash_bal = get_cash_balance(session)
@@ -155,15 +160,20 @@ def log_manual_sell(
             raise ValueError(
                 f"Manual sell for {ticker} failed: trying to sell {shares_sold} shares but only own {float(pos.shares)}."
             )
-        data = yf.download(ticker, period="1d")
+        try:
+            data = yf.Ticker(ticker).history(period="1d")
+        except Exception as e:  # pragma: no cover - network errors
+            data = pd.DataFrame()
+            print(f"Warning: could not fetch market data for {ticker}: {e}")
         if data.empty:
-            raise ValueError(f"Manual sell for {ticker} failed: no market data available.")
-        day_high = float(data["High"].iloc[-1])
-        day_low = float(data["Low"].iloc[-1])
-        if not (day_low <= sell_price <= day_high):
-            raise ValueError(
-                f"Manual sell for {ticker} at {sell_price} failed: price outside today's range {round(day_low, 2)}-{round(day_high, 2)}."
-            )
+            print(f"Warning: market data for {ticker} unavailable; skipping price validation.")
+        else:
+            day_high = float(data["High"].iloc[-1])
+            day_low = float(data["Low"].iloc[-1])
+            if not (day_low <= sell_price <= day_high):
+                raise ValueError(
+                    f"Manual sell for {ticker} at {sell_price} failed: price outside today's range {round(day_low, 2)}-{round(day_high, 2)}."
+                )
         proceeds = Decimal(str(sell_price)) * Decimal(str(shares_sold))
         trade = log_trade(
             session,
