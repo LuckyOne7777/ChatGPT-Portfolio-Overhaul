@@ -47,7 +47,7 @@ document.getElementById('signup-form').addEventListener('submit', async e => {
     const errorEl = document.getElementById('signup-error');
     errorEl.textContent = '';
     try {
-        const res = await fetch('/register', {
+        const res = await fetch('/api/register', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({

@@ -8,7 +8,7 @@ import sqlite3
 
 import jwt
 import pandas as pd
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from flask_bcrypt import Bcrypt
 
 import trading_script as ts
@@ -23,7 +23,7 @@ from repo import (
     get_position,
 )
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=".", static_url_path="")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret")
 bcrypt = Bcrypt(app)
 
@@ -39,6 +39,27 @@ def init_db() -> None:
         conn.commit()
 
 init_db()
+
+
+@app.route("/")
+def home() -> str:
+    return render_template("home.html")
+
+
+@app.route("/login")
+def login_page() -> str:
+    return render_template("login.html")
+
+
+@app.route("/signin")
+def signin_page() -> str:
+    return render_template("signin.html")
+
+
+@app.route("/sample-portfolio")
+def sample_portfolio() -> str:
+    return render_template("sample_portfolio.html")
+
 
 def token_required(f):
     @wraps(f)
