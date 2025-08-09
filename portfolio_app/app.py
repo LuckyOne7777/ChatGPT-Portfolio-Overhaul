@@ -6,10 +6,12 @@ from functools import wraps
 import io
 import os
 import sqlite3
+from typing import Literal
 
 import jwt
 import pandas as pd
 import matplotlib.pyplot as plt
+import yfinance as yf
 from flask import Flask, jsonify, request, render_template, send_file
 from zoneinfo import ZoneInfo
 from flask_bcrypt import Bcrypt
@@ -24,6 +26,7 @@ from repo import (
     get_positions,
     get_equity_series,
     get_position,
+    upsert_equity,
 )
 from db import init_db as init_models
 
@@ -137,6 +140,38 @@ def _check_market_window(now: datetime) -> tuple[bool, str, datetime]:
     if now < cutoff:
         return False, "too_early", cutoff
     return True, "", cutoff
+
+
+def get_close_price(
+    ticker: str,
+    mode: Literal["regular", "force"],
+    now_utc: datetime,
+    fallback: float,
+) -> tuple[float, date, str]:
+    """Fetch the most recent close for *ticker*.
+
+    Returns (price, as_of_date, source). If fetching fails, returns
+    (fallback, today's ET date, "fallback").
+    """
+    now_et = now_utc.astimezone(US_EASTERN)
+    for _ in range(3):
+        try:
+            df = yf.download(ticker, period="5d", interval="1d", progress=False)
+            if df.empty:
+                raise ValueError("no data")
+            # yfinance returns index in UTC; convert to ET
+            df.index = df.index.tz_localize(ZoneInfo("UTC")).tz_convert(US_EASTERN)
+            last_row = df.iloc[-1]
+            last_date = df.index[-1].date()
+            if mode == "regular" and last_date < now_et.date():
+                # Today's bar missing; use previous row if exists
+                if len(df) >= 2:
+                    last_row = df.iloc[-2]
+                    last_date = df.index[-2].date()
+            return float(last_row["Close"]), last_date, "close"
+        except Exception:
+            continue
+    return float(fallback), now_et.date(), "fallback"
 
 
 def process_portfolio(user_id: int, manual_trades: list[dict[str, object]] | None = None) -> None:
@@ -289,7 +324,7 @@ def api_trade_log(user_id):
 @token_required
 def api_equity_history(user_id):
     with begin_tx() as session:
-        history = get_equity_series(session)
+        history = get_equity_series(session, user_id)
     rows = [
         {"date": h.date.isoformat(), "equity": float(h.portfolio_equity)} for h in history
     ]
@@ -300,7 +335,7 @@ def api_equity_history(user_id):
 @token_required
 def api_equity_chart(user_id):
     with begin_tx() as session:
-        history = get_equity_series(session)
+        history = get_equity_series(session, user_id)
     if not history:
         return jsonify({"message": "No equity history"}), 404
     dates = [h.date for h in history]
@@ -366,14 +401,58 @@ def api_process_portfolio(user_id):
     else:
         app.logger.warning("process-portfolio forced by user %s", user_id)
 
-    manual_trades = data.get("manual_trades")
-    try:
-        process_portfolio(user_id, manual_trades)
-    except Exception as e:
-        app.logger.exception("process_portfolio failed")
-        return (
-            jsonify({"message": "Processing failed.", "reason": "error", "details": str(e)}),
-            500,
+    now_utc = datetime.utcnow()
+    mode = "force" if force else "regular"
+
+    with begin_tx() as session:
+        positions = get_positions(session)
+        cash = float(get_cash_balance(session))
+
+    positions_out: list[dict[str, float | str]] = []
+    total_positions_value = 0.0
+    total_pnl = 0.0
+    as_of_date = None
+
+    for pos in positions:
+        shares = float(pos.shares)
+        buy_price = float(pos.avg_price)
+        px, px_date, source = get_close_price(pos.ticker, mode, now_utc, buy_price)
+        if as_of_date is None or px_date > as_of_date:
+            as_of_date = px_date
+        position_value = shares * px
+        pnl = (px - buy_price) * shares
+        total_positions_value += position_value
+        total_pnl += pnl
+        positions_out.append(
+            {
+                "ticker": pos.ticker,
+                "shares": shares,
+                "buy_price": buy_price,
+                "current_price": px,
+                "position_value": position_value,
+                "pnl": pnl,
+                "price_source": source,
+            }
+        )
+
+    totals = {
+        "total_positions_value": total_positions_value,
+        "total_pnl": total_pnl,
+        "cash": cash,
+        "total_equity": cash + total_positions_value,
+    }
+
+    if as_of_date is None:
+        as_of_date = now_utc.astimezone(US_EASTERN).date()
+
+    with begin_tx() as session:
+        upsert_equity(
+            session,
+            user_id,
+            as_of_date,
+            Decimal(str(totals["total_equity"])),
+            process_type="force" if force else "regular",
+            is_final=not force,
         )
 
     return jsonify(
@@ -381,6 +460,9 @@ def api_process_portfolio(user_id):
             "message": "Portfolio processed",
             "forced": force,
             "date": datetime.now(US_EASTERN).date().isoformat(),
+            "as_of_date_et": as_of_date.isoformat(),
+            "positions": positions_out,
+            "totals": totals,
         }
     )
 

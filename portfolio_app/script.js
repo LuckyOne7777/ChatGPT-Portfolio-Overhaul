@@ -2,6 +2,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   const token = localStorage.getItem('token');
+  let startingCapital = null;
 
   // ----- UI helpers ----------------------------------------------------------
   function showError(message, err, elementId = 'errorMessage') {
@@ -210,32 +211,15 @@ document.addEventListener('DOMContentLoaded', () => {
           tr.innerHTML = `
             <td>${p.ticker ?? ''}</td>
             <td>${p.shares ?? ''}</td>
-            <td>$${p.cost_basis?.toFixed ? p.cost_basis.toFixed(2) : p.cost_basis ?? ''}</td>
+            <td>$${p.buy_price?.toFixed ? p.buy_price.toFixed(2) : p.buy_price ?? ''}</td>
             <td>-</td>
             <td>-</td>
-            <td>${p.stop_loss ? `$${p.stop_loss}` : ''}</td>`;
+            <td>-</td>`;
           tbody.appendChild(tr);
         });
       }
 
-      // Totals
-      if (data.total_equity != null) {
-        const totalEl = document.getElementById('totalEquity');
-        if (totalEl) totalEl.textContent = `$${data.total_equity}`;
-
-        // Percent change based on starting capital
-        const start = parseFloat(String(data.starting_capital ?? '').replace(/,/g, ''));
-        const total = parseFloat(String(data.total_equity ?? '').replace(/,/g, ''));
-        const eqChangeEl = document.getElementById('equityChange');
-        if (eqChangeEl) {
-          if (Number.isFinite(start) && start !== 0 && Number.isFinite(total)) {
-            const change = ((total - start) / start) * 100;
-            eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
-          } else {
-            eqChangeEl.textContent = '';
-          }
-        }
-      }
+      startingCapital = parseFloat(String(data.starting_capital ?? '').replace(/,/g, ''));
 
       if (data.cash != null) {
         const el = document.getElementById('cashBalance');
@@ -247,11 +231,75 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.textContent = `$${data.deployed_capital}`;
       }
 
+      if (data.total_equity != null) {
+        const totalEl = document.getElementById('totalEquity');
+        if (totalEl) totalEl.textContent = `$${data.total_equity}`;
+
+        const eqChangeEl = document.getElementById('equityChange');
+        if (eqChangeEl && Number.isFinite(startingCapital) && startingCapital !== 0) {
+          const total = parseFloat(String(data.total_equity ?? '').replace(/,/g, ''));
+          if (Number.isFinite(total)) {
+            const change = ((total - startingCapital) / startingCapital) * 100;
+            eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
+          }
+        }
+      }
+
       return (data.positions || []).length > 0;
     } catch (err) {
       showError(err.message || 'Failed to load portfolio', err);
       return false;
     }
+  }
+
+  function renderProcessedPortfolio(data) {
+    const positions = data.positions || [];
+    const tbody = document.getElementById('portfolioTableBody');
+    if (tbody) {
+      tbody.innerHTML = '';
+      positions.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${p.ticker ?? ''}</td>
+          <td>${p.shares ?? ''}</td>
+          <td>$${Number(p.buy_price ?? 0).toFixed(2)}</td>
+          <td>$${Number(p.current_price ?? 0).toFixed(2)}</td>
+          <td>$${Number(p.position_value ?? 0).toFixed(2)}</td>
+          <td>$${Number(p.pnl ?? 0).toFixed(2)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    const totals = data.totals || {};
+    const cash = Number(totals.cash ?? 0);
+    const posVal = Number(totals.total_positions_value ?? 0);
+    const pnl = Number(totals.total_pnl ?? 0);
+    const totalEq = Number(totals.total_equity ?? 0);
+
+    const cashEl = document.getElementById('totalsCash');
+    if (cashEl) cashEl.textContent = `$${cash.toFixed(2)}`;
+    const posValEl = document.getElementById('totalsPositionsValue');
+    if (posValEl) posValEl.textContent = `$${posVal.toFixed(2)}`;
+    const pnlEl = document.getElementById('totalsPnl');
+    if (pnlEl) pnlEl.textContent = `$${pnl.toFixed(2)}`;
+    const totalEqEl = document.getElementById('totalsTotalEquity');
+    if (totalEqEl) totalEqEl.textContent = `$${totalEq.toFixed(2)}`;
+
+    const totalTop = document.getElementById('totalEquity');
+    if (totalTop) totalTop.textContent = `$${totalEq.toFixed(2)}`;
+    const cashTop = document.getElementById('cashBalance');
+    if (cashTop) cashTop.textContent = `$${cash.toFixed(2)}`;
+    const depTop = document.getElementById('deployedCapital');
+    if (depTop) depTop.textContent = `$${posVal.toFixed(2)}`;
+
+    const eqChangeEl = document.getElementById('equityChange');
+    if (eqChangeEl && Number.isFinite(startingCapital) && startingCapital !== 0) {
+      const change = ((totalEq - startingCapital) / startingCapital) * 100;
+      eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
+    }
+
+    const caption = document.getElementById('asOfCaption');
+    if (caption) caption.textContent = `As of ${data.as_of_date_et}${data.forced ? ' (forced)' : ''}`;
   }
 
   async function loadTradeLog() {
@@ -383,8 +431,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           const body = force ? { force: true } : undefined;
           const data = await fetchJson('/api/process-portfolio', { method: 'POST', body });
+          renderProcessedPortfolio(data);
           showStatus(data.message || 'Portfolio processed successfully', 'processMessage');
-          await loadPortfolio();
           await loadEquityChart();
         } catch (err) {
           showStatus(err.message || 'Failed to process portfolio', 'processMessage');

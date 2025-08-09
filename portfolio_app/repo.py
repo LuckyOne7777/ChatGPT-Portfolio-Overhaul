@@ -61,23 +61,42 @@ def apply_cash(session: Session, delta: Decimal, kind: str, ref_trade_id: int | 
 def get_cash_balance(session: Session) -> Decimal:
     return session.execute(select(func.coalesce(func.sum(CashLedger.delta), 0))).scalar_one()
 
-def record_equity(session: Session, date_val: date, portfolio_equity: Decimal, benchmark_equity: Decimal | None = None) -> None:
+def upsert_equity(
+    session: Session,
+    user_id: int,
+    date_val: date,
+    equity: Decimal,
+    benchmark_equity: Decimal | None = None,
+    process_type: str = "regular",
+    is_final: bool = True,
+) -> None:
     stmt = insert(EquityHistory).values(
+        user_id=user_id,
         date=date_val,
-        portfolio_equity=portfolio_equity,
+        portfolio_equity=equity,
         benchmark_equity=benchmark_equity,
+        process_type=process_type,
+        is_final=is_final,
     )
     stmt = stmt.on_conflict_do_update(
-        index_elements=[EquityHistory.date],
+        index_elements=[EquityHistory.user_id, EquityHistory.date],
         set_={
-            "portfolio_equity": portfolio_equity,
+            "portfolio_equity": equity,
             "benchmark_equity": benchmark_equity,
+            "process_type": process_type,
+            "is_final": is_final,
         },
     )
     session.execute(stmt)
 
-def get_equity_series(session: Session, start: date | None = None, end: date | None = None) -> list[EquityHistory]:
-    stmt = select(EquityHistory).order_by(EquityHistory.date)
+
+def get_equity_series(
+    session: Session,
+    user_id: int,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[EquityHistory]:
+    stmt = select(EquityHistory).where(EquityHistory.user_id == user_id).order_by(EquityHistory.date)
     if start:
         stmt = stmt.where(EquityHistory.date >= start)
     if end:
