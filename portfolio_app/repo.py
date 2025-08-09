@@ -90,6 +90,34 @@ def upsert_equity(
     session.execute(stmt)
 
 
+def record_equity(
+    session: Session,
+    date_val: date,
+    equity: Decimal,
+    benchmark_equity: Decimal | None = None,
+    user_id: int = 1,
+    process_type: str = "regular",
+    is_final: bool = True,
+) -> None:
+    """Persist a daily equity snapshot.
+
+    This is a thin wrapper around :func:`upsert_equity` that provides
+    backward compatibility for older code which expected a simpler
+    ``record_equity`` helper.  By default it records the equity for
+    ``user_id`` 1 but this can be overridden if needed.
+    """
+
+    upsert_equity(
+        session,
+        user_id,
+        date_val,
+        equity,
+        benchmark_equity=benchmark_equity,
+        process_type=process_type,
+        is_final=is_final,
+    )
+
+
 def get_equity_series(
     session: Session,
     user_id: int,
