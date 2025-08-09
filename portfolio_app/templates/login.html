@@ -43,11 +43,11 @@ document.getElementById('login-form').addEventListener('submit', async e => {
     const errorEl = document.getElementById('error');
     errorEl.textContent = '';
     try {
-        const res = await fetch('/login', {
+        const res = await fetch('/api/login', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                identifier: document.getElementById('login-identifier').value,
+                username: document.getElementById('login-identifier').value,
                 password: document.getElementById('login-password').value
             })
         });
