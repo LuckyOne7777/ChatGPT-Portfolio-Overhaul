@@ -28,3 +28,25 @@ def init_db() -> None:
                         "CREATE UNIQUE INDEX uix_equity_history_user_date ON equity_history (user_id, date)"
                     )
                 )
+            if "process_type" not in columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE equity_history ADD COLUMN process_type VARCHAR(10) DEFAULT 'regular'"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "UPDATE equity_history SET process_type = 'regular' WHERE process_type IS NULL"
+                    )
+                )
+            if "is_final" not in columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE equity_history ADD COLUMN is_final BOOLEAN DEFAULT 1"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "UPDATE equity_history SET is_final = 1 WHERE is_final IS NULL"
+                    )
+                )
