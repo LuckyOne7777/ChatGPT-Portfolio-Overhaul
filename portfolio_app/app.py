@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from functools import wraps
 import io
@@ -11,6 +11,7 @@ import jwt
 import pandas as pd
 import matplotlib.pyplot as plt
 from flask import Flask, jsonify, request, render_template, send_file
+from zoneinfo import ZoneInfo
 from flask_bcrypt import Bcrypt
 
 import trading_script as ts
@@ -92,6 +93,71 @@ def token_required(f):
         return f(data["id"], *args, **kwargs)
 
     return decorated
+
+
+US_EASTERN = ZoneInfo("America/New_York")  # Eastern Time zone
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
+    first = date(year, month, 1)
+    return first + timedelta(days=((weekday - first.weekday()) % 7) + (n - 1) * 7)
+
+
+def _last_weekday(year: int, month: int, weekday: int) -> date:
+    first_next = date(year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1)
+    last = first_next - timedelta(days=1)
+    return last - timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def _observed(dt: date) -> date:
+    if dt.weekday() == 5:
+        return dt - timedelta(days=1)
+    if dt.weekday() == 6:
+        return dt + timedelta(days=1)
+    return dt
+
+
+def _easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def is_us_market_holiday(d: date) -> bool:
+    """Return True if *d* is a major U.S. market holiday."""
+    year = d.year
+    holidays = {
+        _observed(date(year, 1, 1)),
+        _nth_weekday(year, 1, 0, 3),
+        _nth_weekday(year, 2, 0, 3),
+        _easter_sunday(year) - timedelta(days=2),
+        _last_weekday(year, 5, 0),
+        _observed(date(year, 6, 19)),
+        _observed(date(year, 7, 4)),
+        _nth_weekday(year, 9, 0, 1),
+        _nth_weekday(year, 11, 3, 4),
+        _observed(date(year, 12, 25)),
+    }
+    return d in holidays
+
+
+def process_portfolio(user_id: int, manual_trades: list[dict[str, object]] | None = None) -> None:
+    """Wrapper to keep business logic isolated from the route."""
+    portfolio, cash = ts.load_latest_portfolio_state("")
+    portfolio_df = portfolio if isinstance(portfolio, pd.DataFrame) else pd.DataFrame(portfolio)
+    ts.process_portfolio(portfolio_df, cash, manual_trades)
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -268,11 +334,26 @@ def api_equity_chart(user_id):
 @app.route("/api/process-portfolio", methods=["POST"])
 @token_required
 def api_process_portfolio(user_id):
-    manual_trades = request.get_json(silent=True) or {}
-    manual_trades = manual_trades.get("manual_trades")
-    portfolio, cash = ts.load_latest_portfolio_state("")
-    portfolio_df = portfolio if isinstance(portfolio, pd.DataFrame) else pd.DataFrame(portfolio)
-    ts.process_portfolio(portfolio_df, cash, manual_trades)
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get("force"))
+    if not force:
+        now = datetime.now(US_EASTERN)
+        today = now.date()
+        # Reject weekends and official market holidays.
+        if now.weekday() >= 5 or is_us_market_holiday(today):
+            return (
+                jsonify({"error": "Market is closed today. Try the next trading day."}),
+                400,
+            )
+        cutoff = datetime.combine(today, time(16, 10), tzinfo=US_EASTERN)
+        # Ensure market has fully closed with a small buffer.
+        if now < cutoff:
+            return (
+                jsonify({"error": "Market has not closed yet. Try again after 4:10 PM ET."}),
+                400,
+            )
+    manual_trades = data.get("manual_trades")
+    process_portfolio(user_id, manual_trades)
     return jsonify({"message": "Portfolio processed"})
 
 if __name__ == "__main__":

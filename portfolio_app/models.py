@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import datetime, date
 from decimal import Decimal
 
-from sqlalchemy import String, Numeric, Integer, Date, DateTime, Text, ForeignKey
+from sqlalchemy import (
+    String,
+    Numeric,
+    Integer,
+    Date,
+    DateTime,
+    Text,
+    ForeignKey,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db import Base
@@ -39,8 +48,9 @@ class CashLedger(Base):
 
 class EquityHistory(Base):
     __tablename__ = "equity_history"
+    __table_args__ = (UniqueConstraint("date", name="uix_equity_history_date"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    date: Mapped[date] = mapped_column(Date, unique=True)
+    date: Mapped[date] = mapped_column(Date)
     portfolio_equity: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     benchmark_equity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
 
