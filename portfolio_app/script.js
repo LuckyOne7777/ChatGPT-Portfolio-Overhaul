@@ -173,7 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const blob = await res.blob();
             chart.src = URL.createObjectURL(blob);
         } catch (err) {
-            showError(err.message || 'Failed to load equity chart', err);
+            let msg = err.message || 'Failed to load equity chart';
+            if (msg.includes('Failed to fetch')) {
+                msg = 'Failed to fetch equity chart. Please check your connection and try again';
+            }
+            showError(msg, err);
         }
     }
 
