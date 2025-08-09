@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     UniqueConstraint,
+    Boolean,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,11 +49,16 @@ class CashLedger(Base):
 
 class EquityHistory(Base):
     __tablename__ = "equity_history"
-    __table_args__ = (UniqueConstraint("date", name="uix_equity_history_date"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uix_equity_history_user_date"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
     date: Mapped[date] = mapped_column(Date)
     portfolio_equity: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     benchmark_equity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    process_type: Mapped[str] = mapped_column(String(10), default="regular")
+    is_final: Mapped[bool] = mapped_column(Boolean, default=True)
 
 class Setting(Base):
     __tablename__ = "settings"
