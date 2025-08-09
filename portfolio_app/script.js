@@ -19,6 +19,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function getErrorMessage(res, fallback) {
+        let msg = `${fallback} (status ${res.status})`;
+        try {
+            const data = await res.json();
+            if (data && data.message) {
+                msg = `${data.message} (status ${res.status})`;
+            }
+        } catch (_) {
+            try {
+                const text = await res.text();
+                if (text) msg = `${text} (status ${res.status})`;
+            } catch (_) {
+                /* ignore */
+            }
+        }
+        return msg;
+    }
+
     init();
 
     async function init() {
@@ -33,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/needs-cash', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (!res.ok) throw new Error('Failed to check starting cash');
+            if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to check starting cash'));
             const data = await res.json();
             if (data.needs_cash) {
                 let amount;
@@ -56,10 +74,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     body: JSON.stringify({ cash: amount })
                 });
-                if (!setRes.ok) throw new Error('Failed to set starting cash');
+                if (!setRes.ok) throw new Error(await getErrorMessage(setRes, 'Failed to set starting cash'));
             }
         } catch (err) {
-            showError('Failed to check starting cash', err);
+            showError(err.message || 'Failed to check starting cash', err);
         }
     }
 
@@ -68,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/portfolio', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (!res.ok) throw new Error('Failed to load portfolio');
+            if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to load portfolio'));
             const data = await res.json();
             const tbody = document.getElementById('portfolioTableBody');
             tbody.innerHTML = '';
@@ -104,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return data.positions.length > 0;
         } catch (err) {
-            showError('Failed to load portfolio', err);
+            showError(err.message || 'Failed to load portfolio', err);
             return false;
         }
     }
@@ -114,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/trade-log', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (!res.ok) throw new Error('Failed to load trade log');
+            if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to load trade log'));
             const data = await res.json();
             const tbody = document.getElementById('tradeLogBody');
             tbody.innerHTML = '';
@@ -139,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('winRate').textContent = sells ? `${Math.round((wins / sells) * 100)}%` : '0%';
             return data.length > 0;
         } catch (err) {
-            showError('Failed to load trade log', err);
+            showError(err.message || 'Failed to load trade log', err);
             return false;
         }
     }
@@ -151,22 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/equity-chart.png', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (!res.ok) {
-                let msg = 'Failed to load equity chart';
-                try {
-                    const errData = await res.json();
-                    if (errData && errData.message) {
-                        msg = errData.message;
-                    }
-                } catch (_) {
-                    try {
-                        msg = await res.text();
-                    } catch (_) {
-                        /* ignore */
-                    }
-                }
-                throw new Error(msg);
-            }
+            if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to load equity chart'));
             const blob = await res.blob();
             chart.src = URL.createObjectURL(blob);
         } catch (err) {
@@ -220,19 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify(payload),
                 });
                 if (!res.ok) {
-                    let msg = 'Trade failed';
-                    try {
-                        const errData = await res.json();
-                        if (errData && errData.message) {
-                            msg = errData.message;
-                        }
-                    } catch (_) {
-                        try {
-                            msg = await res.text();
-                        } catch (_) {
-                            /* ignore */
-                        }
-                    }
+                    const msg = await getErrorMessage(res, 'Trade failed');
                     showError(msg, undefined, 'tradeErrorMessage');
                     return;
                 }
@@ -241,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 await loadTradeLog();
                 await loadEquityChart();
             } catch (err) {
-                showError('Trade failed', err, 'tradeErrorMessage');
+                showError(err.message || 'Trade failed', err, 'tradeErrorMessage');
             }
         });
     }
@@ -254,12 +245,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 });
-                if (!res.ok) throw new Error('Failed to process portfolio');
+                if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to process portfolio'));
                 alert('Portfolio processed successfully');
                 await loadPortfolio();
                 await loadEquityChart();
             } catch (err) {
-                showError('Failed to process portfolio', err);
+                showError(err.message || 'Failed to process portfolio', err);
             }
         });
     }
