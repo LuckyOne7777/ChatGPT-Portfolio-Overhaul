@@ -1,970 +1,217 @@
-from flask import Flask, request, jsonify, send_from_directory, send_file, render_template
-from flask_bcrypt import Bcrypt
-import sqlite3
-import jwt
+from __future__ import annotations
+
 from datetime import datetime, timedelta
+from decimal import Decimal
 from functools import wraps
 import os
-import csv
-from typing import Tuple, Any
-import yfinance as yf
-from pathlib import Path
-from werkzeug.exceptions import HTTPException
+import sqlite3
 
+import jwt
 import pandas as pd
+from flask import Flask, jsonify, request
+from flask_bcrypt import Bcrypt
+
 import trading_script as ts
+from repo import (
+    begin_tx,
+    get_cash_balance,
+    apply_cash,
+    get_setting,
+    set_setting,
+    get_positions,
+    get_equity_series,
+    get_position,
+)
 
-try:  # Optional Streamlit integration for session state
-    import streamlit as st
-except Exception:  # pragma: no cover - streamlit is optional
-    st = None
-
-app = Flask(__name__, static_folder=None)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'change-this-secret')
+app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret")
 bcrypt = Bcrypt(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, 'Scripts and CSV Files')
-DATABASE = os.path.join(BASE_DIR, 'users.db')
-# Use ChatGPT's actual logs as the publicly viewable samples
-SAMPLE_PORTFOLIO = os.path.join(DATA_DIR, 'chatgpt_portfolio.csv')
-SAMPLE_TRADE_LOG = os.path.join(DATA_DIR, 'chatgpt_trade_log.csv')
+DATABASE = os.path.join(BASE_DIR, "users.db")
 
-
-def ensure_user_files(username: str) -> Tuple[str, str, str, str]:
-    """Create per-user portfolio, trade log, cash, and starting equity files if missing."""
-
-    os.makedirs(DATA_DIR, exist_ok=True)
-    portfolio = os.path.join(DATA_DIR, f"{username}_portfolio.csv")
-    trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
-    cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
-    starting_equity_file = os.path.join(DATA_DIR, f"{username}_starting_equity.txt")
-
-    portfolio_missing = not os.path.exists(portfolio)
-    trade_log_missing = not os.path.exists(trade_log)
-    cash_missing_or_empty = not (
-        os.path.exists(cash_file) and os.path.getsize(cash_file) > 0
-    )
-    starting_equity_missing_or_empty = not (
-        os.path.exists(starting_equity_file) and os.path.getsize(starting_equity_file) > 0
-    )
-
-    if portfolio_missing:
-        with open(portfolio, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'Date',
-                'Ticker',
-                'Shares',
-                'Buy Price',
-                'Cost Basis',
-                'Stop Loss',
-                'Current Price',
-                'Total Value',
-                'PnL',
-                'Action',
-                'Cash Balance',
-                'Total Equity',
-            ])
-
-    if trade_log_missing:
-        with open(trade_log, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'Date',
-                'Ticker',
-                'Shares Bought',
-                'Buy Price',
-                'Cost Basis',
-                'PnL',
-                'Reason',
-                'Shares Sold',
-                'Sell Price',
-            ])
-
-    if starting_equity_missing_or_empty and not cash_missing_or_empty:
-        # Preserve existing cash as the starting equity if it exists.
-        with open(cash_file) as src, open(starting_equity_file, 'w') as dst:
-            dst.write(src.read().strip())
-        starting_equity_missing_or_empty = False
-
-    if (
-        cash_missing_or_empty
-        or portfolio_missing
-        or trade_log_missing
-        or starting_equity_missing_or_empty
-    ):
-        # Reset cash and starting equity if any data files were missing or the
-        # cash/starting equity files are empty so a new starting balance can be
-        # provided.
-        open(cash_file, 'w').close()
-        open(starting_equity_file, 'w').close()
-
-    if st is not None:
-        st.session_state.setdefault(username, {})
-        st.session_state[username]['cash_file'] = cash_file
-        st.session_state[username]['starting_equity_file'] = starting_equity_file
-
-    return portfolio, trade_log, cash_file, starting_equity_file
-
-
-def get_user_files(user_id: int) -> Tuple[str, str, str, str, str]:
-    """Return username and related data file paths for a user."""
-
-    with sqlite3.connect(DATABASE) as conn:
-        c = conn.cursor()
-        c.execute('SELECT username FROM users WHERE id=?', (user_id,))
-        row = c.fetchone()
-
-    if not row:
-        raise ValueError('User not found')
-
-    username = row[0]
-    portfolio = os.path.join(DATA_DIR, f"{username}_portfolio.csv")
-    trade_log = os.path.join(DATA_DIR, f"{username}_trade_log.csv")
-    cash_file = os.path.join(DATA_DIR, f"{username}_cash.txt")
-    starting_equity_file = os.path.join(DATA_DIR, f"{username}_starting_equity.txt")
-    return username, portfolio, trade_log, cash_file, starting_equity_file
-
-
-def user_needs_cash(user_id: int) -> bool:
-    """Return True if the user's cash file is missing or empty.
-
-    Also recreate the user's data files if they were deleted while the user
-    remained logged in. This ensures that clearing the portfolio or trade log
-    during a session will prompt for a new starting cash balance on the next
-    page load.
-    """
-
-    username, _, _, _, _ = get_user_files(user_id)
-    _, _, cash_file, starting_equity_file = ensure_user_files(username)
-    return not (
-        os.path.exists(starting_equity_file)
-        and os.path.getsize(starting_equity_file) > 0
-    )
-
-
-def is_valid_ticker(ticker: str) -> bool:
-    """Return True if ``ticker`` has market data via yfinance."""
-
-    try:
-        data = yf.Ticker(ticker).history(period="1d")
-        return not data.empty
-    except Exception:
-        return False
-
-
-def init_db():
+def init_db() -> None:
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
         c.execute(
-            'CREATE TABLE IF NOT EXISTS users ('
-            'id INTEGER PRIMARY KEY AUTOINCREMENT, '
-            'username TEXT UNIQUE, '
-            'email TEXT UNIQUE, '
-            'password TEXT)'
+            "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, email TEXT UNIQUE, password TEXT)"
         )
         conn.commit()
 
 init_db()
 
-
-@app.errorhandler(Exception)
-def handle_unexpected_error(err):
-    """Return JSON for any uncaught exceptions with details."""
-    if isinstance(err, HTTPException):
-        return jsonify({"message": err.description}), err.code
-    app.logger.exception("Unhandled exception: %s", err)
-    return jsonify({"message": "Internal server error", "details": str(err)}), 500
-
-
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth_header = request.headers.get('Authorization', '')
+        auth_header = request.headers.get("Authorization", "")
         parts = auth_header.split()
-        token = parts[1] if len(parts) == 2 and parts[0] == 'Bearer' else None
+        token = parts[1] if len(parts) == 2 and parts[0] == "Bearer" else None
         if not token:
-            return jsonify({'message': 'Token is missing!'}), 401
+            return jsonify({"message": "Token is missing!"}), 401
         try:
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            data = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
         except Exception:
-            return jsonify({'message': 'Token is invalid!'}), 401
-        return f(data['id'], *args, **kwargs)
+            return jsonify({"message": "Token is invalid!"}), 401
+        return f(data["id"], *args, **kwargs)
+
     return decorated
 
-
-@app.route('/')
-def serve_home():
-    return send_from_directory('templates', 'home.html')
-
-
-@app.route('/dashboard')
-def serve_dashboard():
-    return send_from_directory('.', 'index.html')
-
-
-@app.route('/about')
-def serve_about():
-    return send_from_directory('.', 'about.html')
-
-
-@app.route('/script.js')
-def serve_script():
-    return send_from_directory('.', 'script.js')
-
-
-@app.route('/styles.css')
-def serve_styles():
-    return send_from_directory('.', 'styles.css')
-
-
-@app.route('/login.css')
-def serve_login_css():
-    return send_from_directory('.', 'login.css')
-
-
-@app.route('/sample-portfolio')
-def sample_portfolio_page():
-    return send_from_directory('templates', 'sample_portfolio.html')
-
-
-@app.route('/sample_portfolio.js')
-def serve_sample_portfolio_js():
-    return send_from_directory('.', 'sample_portfolio.js')
-
-@app.route('/sample_trade_log.js')
-def serve_sample_trade_log_js():
-    return send_from_directory('.', 'sample_trade_log.js')
-
-
-@app.route('/sample')
-def sample_page():
-    return render_template('sample.html')
-
-
-@app.route('/sample_chart.png')
-def sample_chart_png():
-    """Generate the same comparison chart as ``Generate_Graph.py`` as a PNG."""
-    import importlib.util
-    from io import BytesIO
-    from pathlib import Path
-    #
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
-    data_dir = Path(__file__).resolve().parent / 'Scripts and CSV Files'
-    script_path = data_dir / 'Generate_Graph.py'
-
-    spec = importlib.util.spec_from_file_location('generate_graph', script_path)
-    generate_graph = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(generate_graph)
-
-    chatgpt_totals = generate_graph.load_portfolio_details(None, None)
-    baseline_equity = float(chatgpt_totals['Total Equity'].iloc[0])
-
-    fallback = Path(__file__).resolve().parent / 'week4_performance.png'
-    try:
-        sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
-        if sp500['SPX Value'].isna().all():
-            raise ValueError('Empty SP500 data')
-    except Exception:
-        # Fall back to a pre-generated chart so the sample page always works
-        return send_file(fallback, mimetype='image/png')
-
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(
-        chatgpt_totals['Date'],
-        chatgpt_totals['Total Equity'],
-        label='ChatGPT',
-        marker='o',
-        color='blue',
-        linewidth=2,
-    )
-    ax.plot(
-        sp500['Date'],
-        sp500['SPX Value'],
-        label='S&P 500',
-        marker='o',
-        color='orange',
-        linestyle='--',
-        linewidth=2,
-    )
-
-    final_date = chatgpt_totals['Date'].iloc[-1]
-    final_chatgpt = float(chatgpt_totals['Total Equity'].iloc[-1])
-    final_spx = float(sp500['SPX Value'].iloc[-1])
-    pct_chatgpt = (final_chatgpt - baseline_equity) / baseline_equity * 100
-    pct_spx = (final_spx - baseline_equity) / baseline_equity * 100
-    ax.text(final_date, final_chatgpt + 0.03 * baseline_equity, f"{pct_chatgpt:+.1f}%", color='blue', fontsize=9)
-    ax.text(final_date, final_spx + 0.03 * baseline_equity, f"{pct_spx:+.1f}%", color='orange', fontsize=9)
-
-    ax.set_title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
-    ax.set_xlabel('Date')
-    ax.set_ylabel('Total Equity ($)')
-    ax.legend()
-    ax.grid(True)
-    fig.autofmt_xdate()
-
-    buf = BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight')
-    plt.close(fig)
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png')
-
-
-@app.route('/api/equity-chart.png')
-@token_required
-def user_chart_png(user_id):
-    """Return the user's portfolio vs S&P 500 chart as a PNG."""
-    import importlib.util
-    from io import BytesIO
-    from pathlib import Path
-
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
-    username, portfolio_csv, _trade_log, _cash_file, starting_equity_file = get_user_files(user_id)
-
-    try:
-        with open(starting_equity_file) as f:
-            baseline_equity = float(f.read().strip())
-    except Exception:
-        baseline_equity = None
-
-    script_path = Path(__file__).resolve().parent / 'Scripts and CSV Files' / 'Generate_Graph.py'
-
-    spec = importlib.util.spec_from_file_location('generate_graph', script_path)
-    generate_graph = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(generate_graph)
-
-    generate_graph.PORTFOLIO_CSV = Path(portfolio_csv)
-
-    try:
-        chatgpt_totals = generate_graph.load_portfolio_details(None, None)
-    except SystemExit:
-        return jsonify({'message': 'No portfolio data available to plot'}), 400
-
-    if chatgpt_totals.empty:
-        return jsonify({'message': 'No portfolio data available to plot'}), 400
-
-    if baseline_equity is None:
-        baseline_equity = float(chatgpt_totals['Total Equity'].iloc[0])
-
-    try:
-        sp500 = generate_graph.download_sp500(chatgpt_totals['Date'], baseline_equity)
-        if sp500['SPX Value'].isna().all():
-            raise ValueError('No benchmark data')
-    except Exception:
-        plt.style.use('seaborn-v0_8-whitegrid')
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(
-            chatgpt_totals['Date'],
-            chatgpt_totals['Total Equity'],
-            label=f'{username}',
-            marker='o',
-            color='blue',
-            linewidth=2,
-        )
-        ax.set_title('Portfolio Performance')
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Total Equity ($)')
-        ax.legend()
-        ax.grid(True)
-        fig.autofmt_xdate()
-        buf = BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight')
-        plt.close(fig)
-        buf.seek(0)
-        return send_file(buf, mimetype='image/png')
-
-    dates = pd.to_datetime(chatgpt_totals['Date'])
-    vals = chatgpt_totals['Total Equity'].astype(float).values
-    dfp = pd.DataFrame({'Date': dates, 'ChatGPT': vals}).set_index('Date')
-
-    spx_series = sp500.set_index('Date')['SPX Value'].reindex(dfp.index).ffill()
-
-    df = pd.DataFrame({
-        'ChatGPT': dfp['ChatGPT'] / dfp['ChatGPT'].iloc[0] * 100.0,
-        'SPX': spx_series / spx_series.iloc[0] * 100.0,
-    }, index=dfp.index)
-
-    plt.style.use('default')
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(df.index, df['ChatGPT'], label=f'{username}')
-    ax.plot(df.index, df['SPX'], label='S&P 500')
-    ax.set_title('Portfolio vs. S&P 500 (Indexed to 100)')
-    ax.set_xlabel('Date'); ax.set_ylabel('Index (100=baseline)')
-    ax.legend(); ax.grid(True); fig.autofmt_xdate()
-
-    buf = BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight')
-    plt.close(fig)
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png')
-
-
-@app.route('/register', methods=['POST'])
+@app.route("/api/register", methods=["POST"])
 def register():
     data = request.get_json() or {}
-    username = data.get('username')
-    email = data.get('email')
-    password = data.get('password')
+    username = data.get("username", "")
+    email = data.get("email", "")
+    password = data.get("password", "")
     if not username or not email or not password:
-        return jsonify({'message': 'Missing fields'}), 400
-    pw_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+        return jsonify({"message": "Missing fields"}), 400
+    hashed = bcrypt.generate_password_hash(password).decode("utf-8")
     try:
         with sqlite3.connect(DATABASE) as conn:
             c = conn.cursor()
-            c.execute('INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
-                      (username, email, pw_hash))
+            c.execute(
+                "INSERT INTO users (username, email, password) VALUES (?,?,?)",
+                (username, email, hashed),
+            )
             conn.commit()
     except sqlite3.IntegrityError:
-        return jsonify({'message': 'User already exists'}), 409
-    return jsonify({'message': 'User registered successfully'}), 201
+        return jsonify({"message": "User exists"}), 400
+    return jsonify({"message": "User registered"}), 201
 
-
-@app.route('/login', methods=['GET'])
-def login_page():
-    return send_from_directory('templates', 'login.html')
-
-
-@app.route('/signin', methods=['GET'])
-def signin_page():
-    return send_from_directory('templates', 'signin.html')
-
-
-@app.route('/login', methods=['POST'])
+@app.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json() or {}
-    # Allow users to log in with either their username or email.
-    identifier = data.get('identifier') or data.get('username')
-    password = data.get('password')
+    username = data.get("username", "")
+    password = data.get("password", "")
     with sqlite3.connect(DATABASE) as conn:
         c = conn.cursor()
-        c.execute('SELECT id, username, password FROM users WHERE username=? OR email=?',
-                  (identifier, identifier))
+        c.execute("SELECT id, password FROM users WHERE username=?", (username,))
         row = c.fetchone()
-    if row and bcrypt.check_password_hash(row[2], password):
-        ensure_user_files(row[1])
-        token = jwt.encode(
-            {'id': row[0], 'exp': datetime.utcnow() + timedelta(hours=1)},
-            app.config['SECRET_KEY'],
-            algorithm='HS256',
-        )
-        return jsonify({'token': token})
-    return jsonify({'message': 'Invalid credentials'}), 401
+    if not row or not bcrypt.check_password_hash(row[1], password):
+        return jsonify({"message": "Invalid credentials"}), 401
+    token = jwt.encode(
+        {"id": row[0], "exp": datetime.utcnow() + timedelta(hours=24)},
+        app.config["SECRET_KEY"],
+        algorithm="HS256",
+    )
+    return jsonify({"token": token})
 
-
-@app.route('/protected')
+@app.route("/api/needs-cash")
 @token_required
-def protected(user_id):
-    return jsonify({'message': 'Protected content', 'user_id': user_id})
+def needs_cash(user_id):
+    with begin_tx() as session:
+        starting = get_setting(session, "starting_equity")
+    return jsonify({"needs_cash": starting is None})
 
-
-@app.route('/api/needs-cash')
+@app.route("/api/set-cash", methods=["POST"])
 @token_required
-def api_needs_cash(user_id):
-    """Check if the user must provide an initial cash balance."""
-    return jsonify({'needs_cash': user_needs_cash(user_id)})
-
-
-@app.route('/api/set-cash', methods=['POST'])
-@token_required
-def api_set_cash(user_id):
-    """Persist a starting cash balance for a user (up to 10k)."""
-
+def set_cash(user_id):
     data = request.get_json() or {}
     try:
-        amount = float(data.get('cash', 0))
-    except (TypeError, ValueError):
-        return jsonify({'message': 'Invalid cash amount'}), 400
-    if amount < 0 or amount > 10_000:
-        return jsonify({'message': 'Cash must be between 0 and 10000'}), 400
+        amount = Decimal(str(data.get("cash", 0)))
+    except Exception:
+        return jsonify({"message": "Invalid cash amount"}), 400
+    with begin_tx() as session:
+        apply_cash(session, amount, "DEPOSIT")
+        set_setting(session, "starting_equity", str(amount))
+    return jsonify({"cash": float(amount)}), 201
 
-    _, _, _, cash_file, starting_equity_file = get_user_files(user_id)
-    with open(cash_file, 'w') as f:
-        f.write(str(round(amount, 2)))
-    # Only set the starting capital if it hasn't been recorded yet. This prevents
-    # later cash adjustments from overwriting the initial starting equity and
-    # misreporting the portfolio's performance baseline.
-    if not (
-        os.path.exists(starting_equity_file)
-        and os.path.getsize(starting_equity_file) > 0
-    ):
-        with open(starting_equity_file, 'w') as f:
-            f.write(str(round(amount, 2)))
-    return jsonify({'message': 'Cash balance set'})
-
-
-def get_latest_portfolio(user_id: int):
-    _, portfolio_csv, _, cash_file, starting_equity_file = get_user_files(user_id)
-    starting_capital = None
-    if os.path.exists(starting_equity_file) and os.path.getsize(starting_equity_file) > 0:
-        with open(starting_equity_file) as f:
-            starting_capital = f.read().strip() or None
-    if not os.path.exists(portfolio_csv) or os.path.getsize(portfolio_csv) == 0:
-        cash = '0'
-        if os.path.exists(cash_file):
-            with open(cash_file) as f:
-                cash = f.read().strip() or '0'
-        return [], cash, '0', cash, starting_capital or cash
-
-    with open(portfolio_csv, newline='') as f:
-        rows = list(csv.DictReader(f))
-
-    if not rows:
-        cash = '0'
-        if os.path.exists(cash_file):
-            with open(cash_file) as f:
-                cash = f.read().strip() or '0'
-        return [], cash, '0', cash, starting_capital or cash
-
-    if starting_capital is None:
-        # Determine the earliest recorded equity to use as the starting capital.
-        # Some portfolio CSVs may not be sorted chronologically, so simply taking
-        # the first ``TOTAL`` row can yield the most recent value which causes a
-        # 0% change calculation. To avoid this, select the ``TOTAL`` entry with the
-        # earliest date.
-        total_rows = [r for r in rows if r.get('Ticker') == 'TOTAL']
-        if total_rows:
-            earliest_total = min(total_rows, key=lambda r: r.get('Date', ''))
-            starting_capital = (
-                earliest_total.get('Total Equity')
-                or earliest_total.get('Cash Balance')
-            )
-            # Persist the inferred starting capital so it remains stable on
-            # subsequent reads, even if historical CSV rows are modified.
-            if starting_capital is not None:
-                with open(starting_equity_file, 'w') as f:
-                    f.write(str(starting_capital))
-
-    non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
-    latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
-    positions: list[dict[str, str]] = []
-    cash = '0'
-    total_equity = None
-    for row in rows:
-        if row['Date'] == latest_date and row['Ticker'] != 'TOTAL':
-            positions.append({
-                'Ticker': row['Ticker'],
-                'Shares': row['Shares'],
-                'Buy_Price': row['Buy Price'],
-                'Cost_Basis': row['Cost Basis'],
-                'Current_Price': row['Current Price'],
-                'PnL': row['PnL'],
-                'Stop_Loss': row['Stop Loss'],
-            })
-        elif row['Date'] == latest_date and row['Ticker'] == 'TOTAL':
-            total_equity = row.get('Total Equity') or row.get('Cash Balance')
-            cash = row.get('Cash Balance') or '0'
-
-    # Fallbacks when TOTAL is cash-only (pre-processing) or missing
-    if total_equity is None and os.path.exists(cash_file):
-        with open(cash_file) as f:
-            cash = f.read().strip() or '0'
-        total_equity = cash
-
-    # Sum cost basis for *latest-date* positions to infer deployed when needed
-    try:
-        deployed_cost_basis = sum(
-            float(r.get('Cost Basis') or 0)
-            for r in rows
-            if r.get('Date') == latest_date and r.get('Ticker') != 'TOTAL'
-        )
-    except ValueError:
-        deployed_cost_basis = 0.0
-
-    # If TOTAL equals cash (cash-only write), infer total = cash + deployed_cost_basis
-    try:
-        total_equity_val = float(total_equity or 0)
-        cash_val = float(cash or 0)
-    except ValueError:
-        total_equity_val, cash_val = 0.0, 0.0
-
-    if abs(total_equity_val - cash_val) < 1e-9 and deployed_cost_basis > 0:
-        total_equity_val = cash_val + deployed_cost_basis
-        total_equity = f"{total_equity_val:.2f}"
-
-    deployed_capital = max(total_equity_val - cash_val, 0.0)
-    return positions, cash, f"{deployed_capital:.2f}", total_equity, starting_capital
-
-
-def read_sample_portfolio():
-    if not os.path.exists(SAMPLE_PORTFOLIO):
-        return [], '0', '0', '0', '0'
-    with open(SAMPLE_PORTFOLIO, newline='') as f:
-        rows = list(csv.DictReader(f))
-    if not rows:
-        return [], '0', '0', '0', '0'
-    # As with the user portfolio, ensure we capture the earliest ``TOTAL``
-    # entry to represent the starting capital. This prevents misreporting the
-    # percent change when the CSV is in reverse chronological order.
-    starting_capital = None
-    total_rows = [r for r in rows if r.get('Ticker') == 'TOTAL']
-    if total_rows:
-        earliest_total = min(total_rows, key=lambda r: r.get('Date', ''))
-        starting_capital = (
-            earliest_total.get('Total Equity')
-            or earliest_total.get('Cash Balance')
-        )
-    non_total = [r for r in rows if r['Ticker'] != 'TOTAL']
-    latest_date = max(r['Date'] for r in non_total) if non_total else rows[-1]['Date']
-    positions: list[dict[str, str]] = []
-    cash = '0'
-    total_equity = None
-    for row in rows:
-        if row['Date'] == latest_date and row['Ticker'] != 'TOTAL':
-            positions.append({
-                'Ticker': row['Ticker'],
-                'Shares': row['Shares'],
-                'Buy_Price': row.get('Buy Price', ''),
-                'Cost_Basis': row['Cost Basis'],
-                'Current_Price': row['Current Price'],
-                'PnL': row['PnL'],
-            })
-        elif row['Date'] == latest_date and row['Ticker'] == 'TOTAL':
-            total_equity = row.get('Total Equity') or row.get('Cash Balance')
-            cash = row.get('Cash Balance') or '0'
-
-    try:
-        deployed_capital = float(total_equity or 0) - float(cash or 0)
-    except ValueError:
-        deployed_capital = 0.0
-
-    return positions, cash, f"{deployed_capital:.2f}", total_equity, starting_capital
-
-
-def read_sample_trade_log():
-    if not os.path.exists(SAMPLE_TRADE_LOG):
-        return []
-    with open(SAMPLE_TRADE_LOG, newline='') as f:
-        return list(csv.DictReader(f))
-
-
-def read_sample_equity_history():
-    history = []
-    if os.path.exists(SAMPLE_PORTFOLIO):
-        with open(SAMPLE_PORTFOLIO, newline='') as f:
-            for row in csv.DictReader(f):
-                if row.get('Ticker') == 'TOTAL':
-                    history.append({'Date': row.get('Date'), 'Total Equity': row.get('Total Equity')})
-    return history
-
-
-@app.route('/api/trade', methods=['POST'])
+@app.route("/api/trade", methods=["POST"])
 @token_required
 def api_trade(user_id):
-    """Record a buy or sell trade for the logged-in user."""
     data = request.get_json() or {}
-    ticker = (data.get('ticker') or '').upper()
-    action = (data.get('action') or '').lower()
+    ticker = (data.get("ticker") or "").upper()
+    side = (data.get("action") or data.get("side") or "").upper()
     try:
-        price = float(data.get('price', 0))
-        shares = float(data.get('shares', 0))
+        price = float(data.get("price", 0))
+        shares = float(data.get("shares", 0))
     except (TypeError, ValueError):
-        return jsonify({'message': 'Invalid price or shares'}), 400
-    reason = data.get('reason', '')
-    stop_loss = data.get('stop_loss')
-    if not ticker or action not in {'buy', 'sell'} or price <= 0 or shares <= 0:
-        return jsonify({'message': 'Invalid trade data'}), 400
-    if action == 'sell' and stop_loss not in (None, '', 0, '0'):
-        return jsonify({'message': 'Cannot set a stop loss on a sell order'}), 400
-    if action == 'buy':
-        if stop_loss not in (None, '', 0, '0'):
-            stop_loss_str = str(stop_loss).strip()
-            if stop_loss_str.endswith('%'):
-                try:
-                    val = float(stop_loss_str[:-1])
-                    if val < 0:
-                        raise ValueError
-                except ValueError:
-                    return jsonify({'message': 'Invalid stop loss value'}), 400
-            else:
-                try:
-                    val = float(stop_loss_str)
-                    if val < 0:
-                        raise ValueError
-                except (TypeError, ValueError):
-                    return jsonify({'message': 'Invalid stop loss value'}), 400
-            stop_loss = stop_loss_str
-        else:
-            stop_loss = '0'
+        return jsonify({"message": "Invalid price or shares"}), 400
+    reason = data.get("reason", "")
+    stop_loss = float(data.get("stop_loss", 0) or 0)
+    if not ticker or side not in {"BUY", "SELL"} or price <= 0 or shares <= 0:
+        return jsonify({"message": "Invalid trade data"}), 400
+    if side == "BUY":
+        with begin_tx() as session:
+            balance = float(get_cash_balance(session))
+        if price * shares > balance:
+            return jsonify({"message": "You don't have enough cash to buy these shares"}), 400
+        cash, _ = ts.log_manual_buy(price, shares, ticker, stop_loss, balance, pd.DataFrame(), reason)
     else:
-        stop_loss = ''
-    if not is_valid_ticker(ticker):
-        return jsonify({'message': 'Invalid ticker'}), 400
+        with begin_tx() as session:
+            pos = get_position(session, ticker)
+            if pos is None or float(pos.shares) < shares:
+                return jsonify({"message": "You're trying to sell more shares than you own"}), 400
+        cash, _ = ts.log_manual_sell(price, shares, ticker, 0.0, pd.DataFrame(), reason)
+    return jsonify({"message": "Trade recorded", "cash": cash})
 
-    _, portfolio_csv, trade_log_csv, cash_file, _ = get_user_files(user_id)
-
-    cash = 0.0
-    if os.path.exists(cash_file) and os.path.getsize(cash_file) > 0:
-        with open(cash_file) as f:
-            cash = float(f.read().strip() or 0)
-
-    positions: dict[str, dict[str, Any]] = {}
-    if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
-        with open(portfolio_csv, newline='') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row.get('Ticker') and row['Ticker'] != 'TOTAL':
-                    positions[row['Ticker']] = {
-                        'shares': float(row.get('Shares', 0) or 0),
-                        'cost_basis': float(row.get('Cost Basis', 0) or 0),
-                        'stop_loss': row.get('Stop Loss', ''),
-                    }
-
-    date = datetime.utcnow().strftime('%Y-%m-%d')
-    if action == 'buy':
-        cost = price * shares
-        if cost > cash:
-            return jsonify({'message': "You don't have enough cash to buy these shares"}), 400
-        pos = positions.setdefault(ticker, {'shares': 0.0, 'cost_basis': 0.0, 'stop_loss': ''})
-        pos['shares'] += shares
-        pos['cost_basis'] += cost
-        if stop_loss:
-            pos['stop_loss'] = stop_loss
-        cash -= cost
-        log = {
-            'Date': date,
-            'Ticker': ticker,
-            'Shares Bought': shares,
-            'Buy Price': price,
-            'Cost Basis': cost,
-            'PnL': '',
-            'Reason': reason,
-            'Shares Sold': '',
-            'Sell Price': '',
-        }
-    else:  # sell
-        pos = positions.get(ticker)
-        if not pos:
-            return jsonify({'message': "You don't own this ticker"}), 400
-        epsilon = 1e-6  # small tolerance for floating point precision issues
-        if shares - pos['shares'] > epsilon:
-            return jsonify({'message': "You're trying to sell more shares than you own"}), 400
-        total_shares = pos['shares']
-        cost_basis_per_share = pos['cost_basis'] / total_shares
-        cost_basis = cost_basis_per_share * shares
-        pnl = price * shares - cost_basis
-        pos['shares'] -= shares
-        pos['cost_basis'] -= cost_basis
-        if abs(pos['shares']) <= epsilon:
-            del positions[ticker]
-        cash += price * shares
-        log = {
-            'Date': date,
-            'Ticker': ticker,
-            'Shares Bought': '',
-            'Buy Price': '',
-            'Cost Basis': cost_basis,
-            'PnL': pnl,
-            'Reason': reason,
-            'Shares Sold': shares,
-            'Sell Price': price,
-        }
-
-    file_exists = os.path.exists(trade_log_csv) and os.path.getsize(trade_log_csv) > 0
-    with open(trade_log_csv, 'a', newline='') as f:
-        fieldnames = ['Date', 'Ticker', 'Shares Bought', 'Buy Price', 'Cost Basis', 'PnL', 'Reason', 'Shares Sold', 'Sell Price']
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(log)
-
-    with open(cash_file, 'w') as f:
-        f.write(str(round(cash, 2)))
-
-    with open(portfolio_csv, 'w', newline='') as f:
-        fieldnames = ['Date', 'Ticker', 'Shares', 'Buy Price', 'Cost Basis', 'Stop Loss', 'Current Price', 'Total Value', 'PnL', 'Action', 'Cash Balance', 'Total Equity']
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for t, info in positions.items():
-            buy_price = info['cost_basis'] / info['shares'] if info['shares'] else 0
-            writer.writerow({
-                'Date': date,
-                'Ticker': t,
-                'Shares': info['shares'],
-                'Buy Price': buy_price,
-                'Cost Basis': info['cost_basis'],
-                'Stop Loss': info.get('stop_loss', ''),
-                'Current Price': '',
-                'Total Value': '',
-                'PnL': '',
-                'Action': 'BUY' if action == 'buy' and t == ticker else 'HOLD',
-            })
-        writer.writerow({
-            'Date': date,
-            'Ticker': 'TOTAL',
-            'Shares': '',
-            'Buy Price': '',
-            'Cost Basis': '',
-            'Stop Loss': '',
-            'Current Price': '',
-            'Total Value': '',
-            'PnL': '',
-            'Action': '',
-            'Cash Balance': cash,
-            'Total Equity': cash,
-        })
-
-    return jsonify({'message': 'Trade recorded', 'cash': cash})
-
-
-@app.route('/api/sample-portfolio')
-def api_sample_portfolio():
-    positions, cash, deployed_capital, total_equity, starting_capital = read_sample_portfolio()
-    return jsonify({'positions': positions, 'cash': cash, 'deployed_capital': deployed_capital, 'total_equity': total_equity, 'starting_capital': starting_capital})
-
-
-@app.route('/api/sample-trade-log')
-def api_sample_trade_log():
-    trades = read_sample_trade_log()
-    return jsonify({'trades': trades})
-
-
-@app.route('/api/sample-equity-history')
-def api_sample_equity_history():
-    return jsonify(read_sample_equity_history())
-
-
-@app.route('/api/portfolio')
+@app.route("/api/portfolio")
 @token_required
 def api_portfolio(user_id):
-    try:
-        positions, cash, deployed_capital, total_equity, starting_capital = get_latest_portfolio(user_id)
-    except Exception as err:
-        return jsonify({'message': 'Failed to load portfolio', 'details': str(err)}), 500
-    return jsonify({
-        'positions': positions,
-        'cash': cash,
-        'deployed_capital': deployed_capital,
-        'total_equity': total_equity,
-        'starting_capital': starting_capital,
-    })
+    with begin_tx() as session:
+        positions = get_positions(session)
+        cash = float(get_cash_balance(session))
+        starting = get_setting(session, "starting_equity")
+    pos_list = [
+        {
+            "ticker": p.ticker,
+            "shares": float(p.shares),
+            "buy_price": float(p.avg_price),
+            "stop_loss": float(p.stop_loss or 0),
+            "cost_basis": float(p.avg_price * p.shares),
+        }
+        for p in positions
+    ]
+    total_equity = cash + sum(p["buy_price"] * p["shares"] for p in pos_list)
+    return jsonify(
+        {
+            "positions": pos_list,
+            "cash": cash,
+            "starting_capital": float(starting) if starting else None,
+            "total_equity": total_equity,
+        }
+    )
 
-
-def read_trade_log(user_id: int):
-    _, _, trade_log_csv, _, _ = get_user_files(user_id)
-    if not os.path.exists(trade_log_csv) or os.path.getsize(trade_log_csv) == 0:
-        return []
-
-    with open(trade_log_csv, newline='') as f:
-        reader = csv.DictReader(f)
-        entries = []
-        for row in reader:
-            if row.get('Shares Bought'):
-                action = 'Buy'
-                price = row.get('Buy Price')
-                quantity = row.get('Shares Bought')
-            else:
-                action = 'Sell'
-                price = row.get('Sell Price')
-                quantity = row.get('Shares Sold')
-            entries.append({
-                'Date': row.get('Date'),
-                'Ticker': row.get('Ticker'),
-                'Action': action,
-                'Price': price,
-                'Quantity': quantity,
-                'Reason': row.get('Reason'),
-                'PnL': row.get('PnL'),
-            })
-    return entries
-
-
-@app.route('/api/trade-log')
+@app.route("/api/trade-log")
 @token_required
 def api_trade_log(user_id):
-    try:
-        return jsonify(read_trade_log(user_id))
-    except Exception as err:
-        return jsonify({'message': 'Failed to load trade log', 'details': str(err)}), 500
+    from models import Trade
+    from sqlalchemy import select
+    with begin_tx() as session:
+        trades = session.execute(select(Trade).order_by(Trade.created_at)).scalars().all()
+    rows = [
+        {
+            "date": t.created_at.strftime("%Y-%m-%d"),
+            "ticker": t.ticker,
+            "side": t.side,
+            "shares": float(t.shares),
+            "price": float(t.price),
+            "reason": t.reason,
+        }
+        for t in trades
+    ]
+    return jsonify({"trades": rows})
 
-
-def get_equity_history(user_id: int):
-    _, portfolio_csv, _, cash_file, starting_equity_file = get_user_files(user_id)
-    history = []
-    if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
-        with open(portfolio_csv, newline='') as f:
-            for row in csv.DictReader(f):
-                if row['Ticker'] == 'TOTAL':
-                    history.append({'Date': row['Date'], 'Total Equity': row.get('Total Equity')})
-    else:
-        cash = '0'
-        if os.path.exists(starting_equity_file) and os.path.getsize(starting_equity_file) > 0:
-            with open(starting_equity_file) as f:
-                cash = f.read().strip() or '0'
-        elif os.path.exists(cash_file):
-            with open(cash_file) as f:
-                cash = f.read().strip() or '0'
-        history.append({'Date': datetime.today().strftime('%Y-%m-%d'), 'Total Equity': cash})
-    return history
-
-
-@app.route('/api/equity-history')
+@app.route("/api/equity-history")
 @token_required
 def api_equity_history(user_id):
-    return jsonify(get_equity_history(user_id))
+    with begin_tx() as session:
+        history = get_equity_series(session)
+    rows = [
+        {"date": h.date.isoformat(), "equity": float(h.portfolio_equity)} for h in history
+    ]
+    return jsonify({"history": rows})
 
-
-def process_portfolio(user_id: int) -> None:
-    """Process a user's portfolio using the trading script."""
-
-    _, portfolio_csv, trade_log_csv, cash_file, _ = get_user_files(user_id)
-
-    # Ensure trading_script writes to the user's files
-    ts.DATA_DIR = Path(os.path.dirname(portfolio_csv))
-    ts.PORTFOLIO_CSV = Path(portfolio_csv)
-    ts.TRADE_LOG_CSV = Path(trade_log_csv)
-
-    holdings: list[dict[str, float | str]] = []
-    if os.path.exists(portfolio_csv) and os.path.getsize(portfolio_csv) > 0:
-        with open(portfolio_csv, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row.get("Ticker") and row["Ticker"] != "TOTAL":
-                    shares = float(row.get("Shares", 0) or 0)
-                    cost_basis = float(row.get("Cost Basis", 0) or 0)
-                    stop_loss = float(row.get("Stop Loss", 0) or 0)
-                    buy_price = cost_basis / shares if shares else 0.0
-                    holdings.append(
-                        {
-                            "ticker": row["Ticker"],
-                            "shares": shares,
-                            "buy_price": buy_price,
-                            "stop_loss": stop_loss,
-                            "cost_basis": cost_basis,
-                        }
-                    )
-
-    portfolio_df = pd.DataFrame(holdings)
-
-    cash = 0.0
-    if os.path.exists(cash_file) and os.path.getsize(cash_file) > 0:
-        with open(cash_file) as f:
-            cash = float(f.read().strip() or 0)
-
-    # Process portfolio and update cash balance
-    _, updated_cash = ts.process_portfolio(portfolio_df, cash)
-
-    with open(cash_file, "w") as f:
-        f.write(str(round(updated_cash, 2)))
-
-
-@app.route('/api/process-portfolio', methods=['POST'])
+@app.route("/api/process-portfolio", methods=["POST"])
 @token_required
 def api_process_portfolio(user_id):
-    """Trigger portfolio processing for the authenticated user."""
-    try:
-        process_portfolio(user_id)
-    except Exception as err:
-        return jsonify({'message': 'Failed to process portfolio', 'details': str(err)}), 500
-    return jsonify({'message': 'Portfolio processed'})
+    manual_trades = request.get_json(silent=True) or {}
+    manual_trades = manual_trades.get("manual_trades")
+    portfolio, cash = ts.load_latest_portfolio_state("")
+    portfolio_df = portfolio if isinstance(portfolio, pd.DataFrame) else pd.DataFrame(portfolio)
+    ts.process_portfolio(portfolio_df, cash, manual_trades)
+    return jsonify({"message": "Portfolio processed"})
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
+    from db import init_db as init_models
+    init_models()
     app.run(debug=True)
