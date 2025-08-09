@@ -2,6 +2,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   const token = localStorage.getItem('token');
+  let startingCapital = null;
 
   // ----- UI helpers ----------------------------------------------------------
   function showError(message, err, elementId = 'errorMessage') {
@@ -18,6 +19,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function hideError(elementId = 'errorMessage') {
     const el = document.getElementById(elementId);
     if (el) el.classList.add('visually-hidden');
+  }
+
+  function showStatus(message, elementId = 'processMessage') {
+    const el = document.getElementById(elementId);
+    if (el) {
+      el.textContent = message;
+      el.classList.remove('visually-hidden');
+    } else {
+      alert(message);
+    }
   }
 
   function requireAuthOrRedirect() {
@@ -198,34 +209,17 @@ document.addEventListener('DOMContentLoaded', () => {
         (data.positions || []).forEach(p => {
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${p.Ticker ?? ''}</td>
-            <td>${p.Shares ?? ''}</td>
-            <td>$${p.Cost_Basis ?? ''}</td>
-            <td>$${p.Current_Price ?? ''}</td>
-            <td>${p.PnL ?? ''}</td>
-            <td>$${p.Stop_Loss ?? ''}</td>`;
+            <td>${p.ticker ?? ''}</td>
+            <td>${p.shares ?? ''}</td>
+            <td>$${p.buy_price?.toFixed ? p.buy_price.toFixed(2) : p.buy_price ?? ''}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>`;
           tbody.appendChild(tr);
         });
       }
 
-      // Totals
-      if (data.total_equity != null) {
-        const totalEl = document.getElementById('totalEquity');
-        if (totalEl) totalEl.textContent = `$${data.total_equity}`;
-
-        // Percent change based on starting capital
-        const start = parseFloat(String(data.starting_capital ?? '').replace(/,/g, ''));
-        const total = parseFloat(String(data.total_equity ?? '').replace(/,/g, ''));
-        const eqChangeEl = document.getElementById('equityChange');
-        if (eqChangeEl) {
-          if (Number.isFinite(start) && start !== 0 && Number.isFinite(total)) {
-            const change = ((total - start) / start) * 100;
-            eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
-          } else {
-            eqChangeEl.textContent = '';
-          }
-        }
-      }
+      startingCapital = parseFloat(String(data.starting_capital ?? '').replace(/,/g, ''));
 
       if (data.cash != null) {
         const el = document.getElementById('cashBalance');
@@ -237,6 +231,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.textContent = `$${data.deployed_capital}`;
       }
 
+      if (data.total_equity != null) {
+        const totalEl = document.getElementById('totalEquity');
+        if (totalEl) totalEl.textContent = `$${data.total_equity}`;
+
+        const eqChangeEl = document.getElementById('equityChange');
+        if (eqChangeEl && Number.isFinite(startingCapital) && startingCapital !== 0) {
+          const total = parseFloat(String(data.total_equity ?? '').replace(/,/g, ''));
+          if (Number.isFinite(total)) {
+            const change = ((total - startingCapital) / startingCapital) * 100;
+            eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
+          }
+        }
+      }
+
       return (data.positions || []).length > 0;
     } catch (err) {
       showError(err.message || 'Failed to load portfolio', err);
@@ -244,43 +252,85 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function renderProcessedPortfolio(data) {
+    const positions = data.positions || [];
+    const tbody = document.getElementById('portfolioTableBody');
+    if (tbody) {
+      tbody.innerHTML = '';
+      positions.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${p.ticker ?? ''}</td>
+          <td>${p.shares ?? ''}</td>
+          <td>$${Number(p.buy_price ?? 0).toFixed(2)}</td>
+          <td>$${Number(p.current_price ?? 0).toFixed(2)}</td>
+          <td>$${Number(p.position_value ?? 0).toFixed(2)}</td>
+          <td>$${Number(p.pnl ?? 0).toFixed(2)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    const totals = data.totals || {};
+    const cash = Number(totals.cash ?? 0);
+    const posVal = Number(totals.total_positions_value ?? 0);
+    const pnl = Number(totals.total_pnl ?? 0);
+    const totalEq = Number(totals.total_equity ?? 0);
+
+    const cashEl = document.getElementById('totalsCash');
+    if (cashEl) cashEl.textContent = `$${cash.toFixed(2)}`;
+    const posValEl = document.getElementById('totalsPositionsValue');
+    if (posValEl) posValEl.textContent = `$${posVal.toFixed(2)}`;
+    const pnlEl = document.getElementById('totalsPnl');
+    if (pnlEl) pnlEl.textContent = `$${pnl.toFixed(2)}`;
+    const totalEqEl = document.getElementById('totalsTotalEquity');
+    if (totalEqEl) totalEqEl.textContent = `$${totalEq.toFixed(2)}`;
+
+    const totalTop = document.getElementById('totalEquity');
+    if (totalTop) totalTop.textContent = `$${totalEq.toFixed(2)}`;
+    const cashTop = document.getElementById('cashBalance');
+    if (cashTop) cashTop.textContent = `$${cash.toFixed(2)}`;
+    const depTop = document.getElementById('deployedCapital');
+    if (depTop) depTop.textContent = `$${posVal.toFixed(2)}`;
+
+    const eqChangeEl = document.getElementById('equityChange');
+    if (eqChangeEl && Number.isFinite(startingCapital) && startingCapital !== 0) {
+      const change = ((totalEq - startingCapital) / startingCapital) * 100;
+      eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
+    }
+
+    const caption = document.getElementById('asOfCaption');
+    if (caption) caption.textContent = `As of ${data.as_of_date_et}${data.forced ? ' (forced)' : ''}`;
+  }
+
   async function loadTradeLog() {
     try {
       hideError();
       const data = await fetchJson('/api/trade-log', { method: 'GET' });
+      const trades = data.trades || [];
 
       const tbody = document.getElementById('tradeLogBody');
       if (tbody) {
         tbody.innerHTML = '';
-        let wins = 0;
-        let sells = 0;
-
-        (data || []).forEach(item => {
+        trades.forEach(item => {
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${item.Date ?? ''}</td>
-            <td>${item.Ticker ?? ''}</td>
-            <td>${item.Action ?? ''}</td>
-            <td>$${item.Price ?? ''}</td>
-            <td>${item.Quantity ?? ''}</td>
-            <td>${item.Reason ?? ''}</td>`;
+            <td>${item.date ?? ''}</td>
+            <td>${item.ticker ?? ''}</td>
+            <td>${item.side ?? ''}</td>
+            <td>$${item.price ?? ''}</td>
+            <td>${item.shares ?? ''}</td>
+            <td>${item.reason ?? ''}</td>`;
           tbody.appendChild(tr);
-
-          if (item.Action === 'Sell') {
-            sells++;
-            const pnl = parseFloat(item.PnL);
-            if (Number.isFinite(pnl) && pnl > 0) wins++;
-          }
         });
 
         const nEl = document.getElementById('numTrades');
-        if (nEl) nEl.textContent = (data || []).length;
+        if (nEl) nEl.textContent = trades.length;
 
         const wrEl = document.getElementById('winRate');
-        if (wrEl) wrEl.textContent = sells ? `${Math.round((wins / sells) * 100)}%` : '0%';
+        if (wrEl) wrEl.textContent = '0%';
       }
 
-      return (data || []).length > 0;
+      return trades.length > 0;
     } catch (err) {
       showError(err.message || 'Failed to load trade log', err);
       return false;
@@ -372,17 +422,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const processBtn = document.getElementById('processPortfolioBtn');
-    if (processBtn) {
-      processBtn.addEventListener('click', async () => {
+    const forceBtn = document.getElementById('forceProcessPortfolioBtn');
+    if (processBtn && forceBtn) {
+      const handle = async (force = false) => {
+        const buttons = [processBtn, forceBtn];
+        buttons.forEach(b => b.disabled = true);
+        hideError('processMessage');
         try {
-          await fetchJson('/api/process-portfolio', { method: 'POST' });
-          alert('Portfolio processed successfully');
-          await loadPortfolio();
+          const body = force ? { force: true } : undefined;
+          const data = await fetchJson('/api/process-portfolio', { method: 'POST', body });
+          renderProcessedPortfolio(data);
+          showStatus(data.message || 'Portfolio processed successfully', 'processMessage');
           await loadEquityChart();
         } catch (err) {
-          showError(err.message || 'Failed to process portfolio', err);
+          showStatus(err.message || 'Failed to process portfolio', 'processMessage');
+        } finally {
+          buttons.forEach(b => b.disabled = false);
         }
-      });
+      };
+
+      processBtn.addEventListener('click', () => handle(false));
+      forceBtn.addEventListener('click', () => handle(true));
     }
   }
 });

@@ -62,6 +62,8 @@
         <section id="portfolio">
             <h2>Portfolio</h2>
                 <button id="processPortfolioBtn">Process Portfolio</button>
+                <button id="forceProcessPortfolioBtn">Force Process</button>
+                <div id="processMessage" class="visually-hidden" role="status" aria-live="polite"></div>
             <div class="table-container">
                 <table>
                     <caption class="visually-hidden">Current portfolio positions</caption>
@@ -69,14 +71,21 @@
                         <tr>
                             <th>Ticker</th>
                             <th>Shares</th>
-                            <th>Cost Basis</th>
+                            <th>Buy Price</th>
                             <th>Current Price</th>
+                            <th>Position Value</th>
                             <th>PnL</th>
-                            <th>Stop Loss</th>
                         </tr>
                     </thead>
                     <tbody id="portfolioTableBody"></tbody>
                 </table>
+            </div>
+            <div id="portfolioTotals">
+                <p>Cash: <span id="totalsCash">--</span></p>
+                <p>Positions Value: <span id="totalsPositionsValue">--</span></p>
+                <p>PnL: <span id="totalsPnl">--</span></p>
+                <p>Total Equity: <span id="totalsTotalEquity">--</span></p>
+                <p id="asOfCaption"></p>
             </div>
         </section>
 
