@@ -20,6 +20,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) el.classList.add('visually-hidden');
   }
 
+  function showStatus(message, elementId = 'processMessage') {
+    const el = document.getElementById(elementId);
+    if (el) {
+      el.textContent = message;
+      el.classList.remove('visually-hidden');
+    } else {
+      alert(message);
+    }
+  }
+
   function requireAuthOrRedirect() {
     if (!token) {
       window.location.href = '/login';
@@ -364,17 +374,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const processBtn = document.getElementById('processPortfolioBtn');
-    if (processBtn) {
-      processBtn.addEventListener('click', async () => {
+    const forceBtn = document.getElementById('forceProcessPortfolioBtn');
+    if (processBtn && forceBtn) {
+      const handle = async (force = false) => {
+        const buttons = [processBtn, forceBtn];
+        buttons.forEach(b => b.disabled = true);
+        hideError('processMessage');
         try {
-          await fetchJson('/api/process-portfolio', { method: 'POST' });
-          alert('Portfolio processed successfully');
+          const body = force ? { force: true } : undefined;
+          const data = await fetchJson('/api/process-portfolio', { method: 'POST', body });
+          showStatus(data.message || 'Portfolio processed successfully', 'processMessage');
           await loadPortfolio();
           await loadEquityChart();
         } catch (err) {
-          showError(err.message || 'Failed to process portfolio', err);
+          showStatus(err.message || 'Failed to process portfolio', 'processMessage');
+        } finally {
+          buttons.forEach(b => b.disabled = false);
         }
-      });
+      };
+
+      processBtn.addEventListener('click', () => handle(false));
+      forceBtn.addEventListener('click', () => handle(true));
     }
   }
 });
