@@ -68,27 +68,52 @@ def load_portfolio_details(
 
     mask = (chatgpt_totals["Date"] >= start_date) & (chatgpt_totals["Date"] <= end_date)
     chatgpt_totals = chatgpt_totals.loc[mask].copy()
+    chatgpt_totals = chatgpt_totals.sort_values("Date").reset_index(drop=True)  # ensure correct order
     return chatgpt_totals
 
 
 def download_sp500(dates: pd.Series, baseline_equity: float = 100.0) -> pd.DataFrame:
-    """Download S&P 500 prices and align them with ``dates``.
+    # Clean & sort dates
+    dates = pd.to_datetime(dates).dropna().sort_values().unique()
+    if len(dates) == 0:
+        raise SystemExit("No valid dates to align benchmark.")
 
-    Any missing benchmark values are forward filled to ensure the returned
-    DataFrame has a 1:1 match with the portfolio's timeline.
-    """
+    start_date = pd.to_datetime(dates[0])
+    end_date = pd.to_datetime(dates[-1])
 
-    start_date = dates.min()
-    end_date = dates.max()
-    sp500 = yf.download(
-        "^GSPC", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False
-    )
-    sp500 = cast(pd.DataFrame, sp500)["Close"]
+    # Try a few symbols in case one fails
+    symbols = ["^GSPC", "^SPX", "SPY"]
+    sp500 = None
+    for sym in symbols:
+        df = yf.download(sym, start=start_date, end=end_date + pd.Timedelta(days=1), progress=False)
+        if df is not None and not df.empty:
+            sp500 = df
+            break
 
-    aligned = sp500.reindex(pd.to_datetime(dates)).ffill().bfill().interpolate()
-    base_price = aligned.iloc[0]
-    values = aligned / base_price * baseline_equity
-    return pd.DataFrame({"Date": pd.to_datetime(dates), "SPX Value": values})
+    if sp500 is None or sp500.empty:
+        raise SystemExit("Failed to download S&P 500 benchmark data.")
+
+    # Handle MultiIndex columns some yfinance versions return
+    if isinstance(sp500.columns, pd.MultiIndex):
+        sp500.columns = sp500.columns.get_level_values(0)
+
+    if "Close" not in sp500.columns:
+        raise SystemExit("Benchmark data missing 'Close' column.")
+
+    close = pd.to_numeric(sp500["Close"], errors="coerce")
+
+    # Align to the portfolio timeline and fill gaps (weekends/holidays)
+    aligned = close.reindex(pd.to_datetime(dates)).ffill().bfill()
+    if aligned.isna().all():
+        raise SystemExit("Benchmark alignment produced all-NaN values.")
+
+    base = aligned.iloc[0]
+    if pd.isna(base) or base == 0:
+        raise SystemExit("Invalid base value for benchmark normalization.")
+
+    values = aligned / base * float(baseline_equity)
+    return pd.DataFrame({"Date": pd.to_datetime(dates), "SPX Value": values.values})
+
 
 
 def main(
