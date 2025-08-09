@@ -24,6 +24,7 @@ from repo import (
     get_equity_series,
     get_position,
 )
+from db import init_db as init_models
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret")
@@ -41,6 +42,7 @@ def init_db() -> None:
         conn.commit()
 
 init_db()
+init_models()
 
 
 @app.route("/")
