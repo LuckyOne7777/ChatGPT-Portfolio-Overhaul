@@ -187,9 +187,11 @@ def process_portfolio(
             if PORTFOLIO_CSV.exists():
                 try:
                     prev = pd.read_csv(PORTFOLIO_CSV)
-                    prev = prev[prev["Ticker"] == ticker].tail(1)
+                    prev = prev[prev["Ticker"] == ticker]
                     if not prev.empty:
-                        cp = prev["Current Price"].iloc[0]
+                        prev["Date"] = pd.to_datetime(prev["Date"], errors="coerce")
+                        prev = prev.sort_values("Date")
+                        cp = prev["Current Price"].iloc[-1]
                         if pd.notna(cp) and cp != "":
                             fallback_price = float(cp)
                 except Exception:  # pragma: no cover - defensive
