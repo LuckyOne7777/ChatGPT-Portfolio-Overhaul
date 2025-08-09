@@ -173,21 +173,65 @@ def process_portfolio(
         data = yf.Ticker(ticker).history(period="1d")
 
         if data.empty:
-            print(f"No data for {ticker}")
-            row = {
-                "Date": today,
-                "Ticker": ticker,
-                "Shares": shares,
-                "Buy Price": buy_price,
-                "Cost Basis": cost_basis,
-                "Stop Loss": stop,
-                "Current Price": "",
-                "Total Value": "",
-                "PnL": "",
-                "Action": "NO DATA",
-                "Cash Balance": "",
-                "Total Equity": "",
-            }
+            # When forcing a run outside market hours, ``history('1d')`` can be empty.
+            # Fallback to a longer period and grab the last available close so we
+            # don't accidentally default to the buy price.
+            data = yf.Ticker(ticker).history(period="5d")
+            data = data.dropna(subset=["Close", "Low"])
+
+        if data.empty:
+            # Fall back to the most recently logged closing price in the portfolio
+            # CSV so that forced processing uses a realistic price instead of the
+            # original buy-in.
+            fallback_price: float | None = None
+            if PORTFOLIO_CSV.exists():
+                try:
+                    prev = pd.read_csv(PORTFOLIO_CSV)
+                    prev = prev[prev["Ticker"] == ticker].tail(1)
+                    if not prev.empty:
+                        cp = prev["Current Price"].iloc[0]
+                        if pd.notna(cp) and cp != "":
+                            fallback_price = float(cp)
+                except Exception:  # pragma: no cover - defensive
+                    fallback_price = None
+
+            if fallback_price is None:
+                print(f"No data for {ticker}")
+                row = {
+                    "Date": today,
+                    "Ticker": ticker,
+                    "Shares": shares,
+                    "Buy Price": buy_price,
+                    "Cost Basis": cost_basis,
+                    "Stop Loss": stop,
+                    "Current Price": "",
+                    "Total Value": "",
+                    "PnL": "",
+                    "Action": "NO DATA",
+                    "Cash Balance": "",
+                    "Total Equity": "",
+                }
+            else:
+                price = fallback_price
+                value = round(price * shares, 2)
+                pnl = round((price - buy_price) * shares, 2)
+                action = "HOLD"
+                total_value += value
+                total_pnl += pnl
+                row = {
+                    "Date": today,
+                    "Ticker": ticker,
+                    "Shares": shares,
+                    "Buy Price": buy_price,
+                    "Cost Basis": cost_basis,
+                    "Stop Loss": stop,
+                    "Current Price": price,
+                    "Total Value": value,
+                    "PnL": pnl,
+                    "Action": action,
+                    "Cash Balance": "",
+                    "Total Equity": "",
+                }
         else:
             low_price = round(float(data["Low"].iloc[-1]), 2)
             close_price = round(float(data["Close"].iloc[-1]), 2)
