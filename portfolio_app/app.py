@@ -98,59 +98,45 @@ def token_required(f):
 US_EASTERN = ZoneInfo("America/New_York")  # Eastern Time zone
 
 
-def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
-    first = date(year, month, 1)
-    return first + timedelta(days=((weekday - first.weekday()) % 7) + (n - 1) * 7)
-
-
-def _last_weekday(year: int, month: int, weekday: int) -> date:
-    first_next = date(year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1)
-    last = first_next - timedelta(days=1)
-    return last - timedelta(days=(last.weekday() - weekday) % 7)
-
-
-def _observed(dt: date) -> date:
-    if dt.weekday() == 5:
-        return dt - timedelta(days=1)
-    if dt.weekday() == 6:
-        return dt + timedelta(days=1)
-    return dt
-
-
-def _easter_sunday(year: int) -> date:
-    a = year % 19
-    b = year // 100
-    c = year % 100
-    d = b // 4
-    e = b % 4
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i = c // 4
-    k = c % 4
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
-
-
-def is_us_market_holiday(d: date) -> bool:
-    """Return True if *d* is a major U.S. market holiday."""
-    year = d.year
-    holidays = {
-        _observed(date(year, 1, 1)),
-        _nth_weekday(year, 1, 0, 3),
-        _nth_weekday(year, 2, 0, 3),
-        _easter_sunday(year) - timedelta(days=2),
-        _last_weekday(year, 5, 0),
-        _observed(date(year, 6, 19)),
-        _observed(date(year, 7, 4)),
-        _nth_weekday(year, 9, 0, 1),
-        _nth_weekday(year, 11, 3, 4),
-        _observed(date(year, 12, 25)),
+def _us_holidays(year: int) -> set[date]:
+    """Minimal U.S. market holiday set for *year* (no external deps)."""
+    return {
+        date(year, 1, 1),   # New Year's Day
+        date(year, 1, 15),  # Martin Luther King Jr. Day
+        date(year, 2, 19),  # Presidents' Day
+        date(year, 3, 29),  # Good Friday
+        date(year, 5, 27),  # Memorial Day
+        date(year, 6, 19),  # Juneteenth
+        date(year, 7, 4),   # Independence Day
+        date(year, 9, 2),   # Labor Day
+        date(year, 11, 28), # Thanksgiving Day
+        date(year, 12, 25), # Christmas Day
     }
-    return d in holidays
+
+
+def _is_trading_day(d: date) -> bool:
+    return d.weekday() < 5 and d not in _us_holidays(d.year)
+
+
+def _next_trading_day(d: date) -> date:
+    nxt = d
+    while True:
+        nxt += timedelta(days=1)
+        if _is_trading_day(nxt):
+            return nxt
+
+
+def _check_market_window(now: datetime) -> tuple[bool, str, datetime]:
+    """Return (allowed, reason, reference_dt)."""
+    today = now.date()
+    if not _is_trading_day(today):
+        next_day = _next_trading_day(today)
+        next_window = datetime.combine(next_day, time(16, 10), tzinfo=US_EASTERN)
+        return False, "closed_day", next_window
+    cutoff = datetime.combine(today, time(16, 10), tzinfo=US_EASTERN)
+    if now < cutoff:
+        return False, "too_early", cutoff
+    return True, "", cutoff
 
 
 def process_portfolio(user_id: int, manual_trades: list[dict[str, object]] | None = None) -> None:
@@ -334,27 +320,69 @@ def api_equity_chart(user_id):
 @app.route("/api/process-portfolio", methods=["POST"])
 @token_required
 def api_process_portfolio(user_id):
+    """
+    Process portfolio (default path)
+    - One clean equity snapshot per trading day using final daily closes.
+    - Runs only on valid US trading days and after 4:10 PM ET.
+    - Idempotent: upsert on date, no duplicates.
+
+    Force processing
+    - Admin/backfill escape hatch when processing outside the window.
+    - Skips time/holiday checks but logs a warning and marks "forced": true.
+    - Still idempotent (same upsert rule).
+    """
+
     data = request.get_json(silent=True) or {}
-    force = bool(data.get("force"))
+    raw_force = data.get("force", request.args.get("force"))
+    force = str(raw_force).lower() == "true"
+
     if not force:
-        now = datetime.now(US_EASTERN)
-        today = now.date()
-        # Reject weekends and official market holidays.
-        if now.weekday() >= 5 or is_us_market_holiday(today):
-            return (
-                jsonify({"error": "Market is closed today. Try the next trading day."}),
-                400,
-            )
-        cutoff = datetime.combine(today, time(16, 10), tzinfo=US_EASTERN)
-        # Ensure market has fully closed with a small buffer.
-        if now < cutoff:
-            return (
-                jsonify({"error": "Market has not closed yet. Try again after 4:10 PM ET."}),
-                400,
-            )
+        allowed, reason, ref_dt = _check_market_window(datetime.now(US_EASTERN))
+        if not allowed:
+            if reason == "closed_day":
+                return (
+                    jsonify(
+                        {
+                            "message": "Market is closed (weekend/holiday).",
+                            "reason": "closed_day",
+                            "next_window_et": ref_dt.strftime("%Y-%m-%d %H:%M ET"),
+                            "hint": "Try after market close on the next trading day or pass {\"force\": true} for a one-off run.",
+                        }
+                    ),
+                    400,
+                )
+            if reason == "too_early":
+                return (
+                    jsonify(
+                        {
+                            "message": "Too early to process — wait for market close.",
+                            "reason": "too_early",
+                            "earliest_et": ref_dt.strftime("%Y-%m-%d %H:%M ET"),
+                            "hint": "Retry after 4:10 PM ET or pass {\"force\": true} if you must.",
+                        }
+                    ),
+                    400,
+                )
+    else:
+        app.logger.warning("process-portfolio forced by user %s", user_id)
+
     manual_trades = data.get("manual_trades")
-    process_portfolio(user_id, manual_trades)
-    return jsonify({"message": "Portfolio processed"})
+    try:
+        process_portfolio(user_id, manual_trades)
+    except Exception as e:
+        app.logger.exception("process_portfolio failed")
+        return (
+            jsonify({"message": "Processing failed.", "reason": "error", "details": str(e)}),
+            500,
+        )
+
+    return jsonify(
+        {
+            "message": "Portfolio processed",
+            "forced": force,
+            "date": datetime.now(US_EASTERN).date().isoformat(),
+        }
+    )
 
 if __name__ == "__main__":
     from db import init_db as init_models
