@@ -51,4 +51,5 @@ That's it! from there you can interact with the webpage.
 
 Find a bug or have a suggestion?
 
-Gmail: 
+Gmail: nathanbsmith.business@gmail.com 
+
