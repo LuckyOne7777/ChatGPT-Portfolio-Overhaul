@@ -3,7 +3,7 @@
 A Flask + Python app that tracks and visualizes a simulated portfolio’s performance, comparing it to the S&P 500 baseline.  
 Originally built for my AI-led micro-cap experiment, now open for others to use.
 
-**Note: Very early in devolopment. Baseline is currently broken, other unexpected bugs likely.**
+**Note: Very early in devolopment. Unexpected bugs likely.**
 
 ---
 
@@ -52,4 +52,5 @@ That's it! from there you can interact with the webpage.
 Find a bug or have a suggestion?
 
 Gmail: nathanbsmith.business@gmail.com 
+
 
