@@ -102,28 +102,20 @@ def log_manual_buy(
 ) -> tuple[float, pd.DataFrame]:
     data = yf.download(ticker, period="1d")
     if data.empty:
-        print(f"Manual buy for {ticker} failed: no market data available.")
-        with begin_tx() as session:
-            cash_bal = float(get_cash_balance(session))
-            df = _positions_df(session)
-        return cash_bal, df
+        raise ValueError(f"Manual buy for {ticker} failed: no market data available.")
     day_high = float(data["High"].iloc[-1])
     day_low = float(data["Low"].iloc[-1])
     if not (day_low <= buy_price <= day_high):
-        print(
+        raise ValueError(
             f"Manual buy for {ticker} at {buy_price} failed: price outside today's range {round(day_low, 2)}-{round(day_high, 2)}."
         )
-        with begin_tx() as session:
-            cash_bal = float(get_cash_balance(session))
-            df = _positions_df(session)
-        return cash_bal, df
     cost = Decimal(str(buy_price)) * Decimal(str(shares))
     with begin_tx() as session:
         cash_bal = get_cash_balance(session)
         if cost > cash_bal:
-            print(f"Manual buy for {ticker} failed: cost {cost} exceeds cash balance {cash_bal}.")
-            df = _positions_df(session)
-            return float(cash_bal), df
+            raise ValueError(
+                f"Manual buy for {ticker} failed: cost {cost} exceeds cash balance {cash_bal}."
+            )
         trade = log_trade(
             session,
             "BUY",
@@ -158,32 +150,20 @@ def log_manual_sell(
     with begin_tx() as session:
         pos = get_position(session, ticker)
         if pos is None:
-            print(f"Manual sell for {ticker} failed: ticker not in portfolio.")
-            cash_bal = float(get_cash_balance(session))
-            df = _positions_df(session)
-            return cash_bal, df
+            raise ValueError(f"Manual sell for {ticker} failed: ticker not in portfolio.")
         if Decimal(str(shares_sold)) > pos.shares:
-            print(
+            raise ValueError(
                 f"Manual sell for {ticker} failed: trying to sell {shares_sold} shares but only own {float(pos.shares)}."
             )
-            cash_bal = float(get_cash_balance(session))
-            df = _positions_df(session)
-            return cash_bal, df
         data = yf.download(ticker, period="1d")
         if data.empty:
-            print(f"Manual sell for {ticker} failed: no market data available.")
-            cash_bal = float(get_cash_balance(session))
-            df = _positions_df(session)
-            return cash_bal, df
+            raise ValueError(f"Manual sell for {ticker} failed: no market data available.")
         day_high = float(data["High"].iloc[-1])
         day_low = float(data["Low"].iloc[-1])
         if not (day_low <= sell_price <= day_high):
-            print(
+            raise ValueError(
                 f"Manual sell for {ticker} at {sell_price} failed: price outside today's range {round(day_low, 2)}-{round(day_high, 2)}."
             )
-            cash_bal = float(get_cash_balance(session))
-            df = _positions_df(session)
-            return cash_bal, df
         proceeds = Decimal(str(sell_price)) * Decimal(str(shares_sold))
         trade = log_trade(
             session,
@@ -219,13 +199,17 @@ def process_portfolio(
                 price = float(trade.get("price", 0))
             except Exception:
                 continue
-            if action == "b":
-                stop_loss = float(trade.get("stop_loss", 0) or 0)
-                reason = str(trade.get("reason", "")).strip() or "New position"
-                cash, _ = log_manual_buy(price, shares, ticker, stop_loss, cash, pd.DataFrame(), reason)
-            elif action == "s":
-                reason = str(trade.get("reason", "")).strip() or "No reason provided"
-                cash, _ = log_manual_sell(price, shares, ticker, cash, pd.DataFrame(), reason)
+            try:
+                if action == "b":
+                    stop_loss = float(trade.get("stop_loss", 0) or 0)
+                    reason = str(trade.get("reason", "")).strip() or "New position"
+                    cash, _ = log_manual_buy(price, shares, ticker, stop_loss, cash, pd.DataFrame(), reason)
+                elif action == "s":
+                    reason = str(trade.get("reason", "")).strip() or "No reason provided"
+                    cash, _ = log_manual_sell(price, shares, ticker, cash, pd.DataFrame(), reason)
+            except ValueError as e:
+                print(e)
+                continue
 
     today = datetime.today().strftime("%Y-%m-%d")
     day = datetime.today().weekday()
