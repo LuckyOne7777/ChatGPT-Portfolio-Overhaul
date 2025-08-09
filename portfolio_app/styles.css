@@ -29,6 +29,11 @@
     margin-left: 0.5rem;
 }
 
+#processMessage {
+    display: inline-block;
+    margin-left: 0.5rem;
+}
+
 body {
     font-family: 'Poppins', Arial, sans-serif;
     margin: 0;
