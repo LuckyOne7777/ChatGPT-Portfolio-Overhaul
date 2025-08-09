@@ -61,6 +61,18 @@ def sample_portfolio() -> str:
     return render_template("sample_portfolio.html")
 
 
+@app.route("/dashboard")
+def dashboard_page() -> str:
+    """Serve the main dashboard page."""
+    return app.send_static_file("index.html")
+
+
+@app.route("/about")
+def about_page() -> str:
+    """Serve the about page."""
+    return app.send_static_file("about.html")
+
+
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
