@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Iterable
 
 from sqlalchemy import select, func
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from db import SessionLocal
@@ -61,12 +62,19 @@ def get_cash_balance(session: Session) -> Decimal:
     return session.execute(select(func.coalesce(func.sum(CashLedger.delta), 0))).scalar_one()
 
 def record_equity(session: Session, date_val: date, portfolio_equity: Decimal, benchmark_equity: Decimal | None = None) -> None:
-    existing = session.execute(select(EquityHistory).where(EquityHistory.date == date_val)).scalar_one_or_none()
-    if existing:
-        existing.portfolio_equity = portfolio_equity
-        existing.benchmark_equity = benchmark_equity
-    else:
-        session.add(EquityHistory(date=date_val, portfolio_equity=portfolio_equity, benchmark_equity=benchmark_equity))
+    stmt = insert(EquityHistory).values(
+        date=date_val,
+        portfolio_equity=portfolio_equity,
+        benchmark_equity=benchmark_equity,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[EquityHistory.date],
+        set_={
+            "portfolio_equity": portfolio_equity,
+            "benchmark_equity": benchmark_equity,
+        },
+    )
+    session.execute(stmt)
 
 def get_equity_series(session: Session, start: date | None = None, end: date | None = None) -> list[EquityHistory]:
     stmt = select(EquityHistory).order_by(EquityHistory.date)
