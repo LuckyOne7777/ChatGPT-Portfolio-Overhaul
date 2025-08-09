@@ -9,6 +9,7 @@ import csv
 from typing import Tuple, Any
 import yfinance as yf
 from pathlib import Path
+from werkzeug.exceptions import HTTPException
 
 import pandas as pd
 import trading_script as ts
@@ -166,6 +167,15 @@ def init_db():
         conn.commit()
 
 init_db()
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(err):
+    """Return JSON for any uncaught exceptions with details."""
+    if isinstance(err, HTTPException):
+        return jsonify({"message": err.description}), err.code
+    app.logger.exception("Unhandled exception: %s", err)
+    return jsonify({"message": "Internal server error", "details": str(err)}), 500
 
 
 def token_required(f):
@@ -824,8 +834,17 @@ def api_sample_equity_history():
 @app.route('/api/portfolio')
 @token_required
 def api_portfolio(user_id):
-    positions, cash, deployed_capital, total_equity, starting_capital = get_latest_portfolio(user_id)
-    return jsonify({'positions': positions, 'cash': cash, 'deployed_capital': deployed_capital, 'total_equity': total_equity, 'starting_capital': starting_capital})
+    try:
+        positions, cash, deployed_capital, total_equity, starting_capital = get_latest_portfolio(user_id)
+    except Exception as err:
+        return jsonify({'message': 'Failed to load portfolio', 'details': str(err)}), 500
+    return jsonify({
+        'positions': positions,
+        'cash': cash,
+        'deployed_capital': deployed_capital,
+        'total_equity': total_equity,
+        'starting_capital': starting_capital,
+    })
 
 
 def read_trade_log(user_id: int):
@@ -860,7 +879,10 @@ def read_trade_log(user_id: int):
 @app.route('/api/trade-log')
 @token_required
 def api_trade_log(user_id):
-    return jsonify(read_trade_log(user_id))
+    try:
+        return jsonify(read_trade_log(user_id))
+    except Exception as err:
+        return jsonify({'message': 'Failed to load trade log', 'details': str(err)}), 500
 
 
 def get_equity_history(user_id: int):
@@ -937,7 +959,10 @@ def process_portfolio(user_id: int) -> None:
 @token_required
 def api_process_portfolio(user_id):
     """Trigger portfolio processing for the authenticated user."""
-    process_portfolio(user_id)
+    try:
+        process_portfolio(user_id)
+    except Exception as err:
+        return jsonify({'message': 'Failed to process portfolio', 'details': str(err)}), 500
     return jsonify({'message': 'Portfolio processed'})
 
 
