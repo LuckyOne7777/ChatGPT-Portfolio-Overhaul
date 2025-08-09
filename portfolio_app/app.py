@@ -196,13 +196,15 @@ def api_portfolio(user_id):
         }
         for p in positions
     ]
-    total_equity = cash + sum(p["buy_price"] * p["shares"] for p in pos_list)
+    deployed_capital = sum(p["cost_basis"] for p in pos_list)
+    total_equity = cash + deployed_capital
     return jsonify(
         {
             "positions": pos_list,
             "cash": cash,
             "starting_capital": float(starting) if starting else None,
             "total_equity": total_equity,
+            "deployed_capital": deployed_capital,
         }
     )
 

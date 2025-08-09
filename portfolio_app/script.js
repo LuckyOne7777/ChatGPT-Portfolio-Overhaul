@@ -198,12 +198,12 @@ document.addEventListener('DOMContentLoaded', () => {
         (data.positions || []).forEach(p => {
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${p.Ticker ?? ''}</td>
-            <td>${p.Shares ?? ''}</td>
-            <td>$${p.Cost_Basis ?? ''}</td>
-            <td>$${p.Current_Price ?? ''}</td>
-            <td>${p.PnL ?? ''}</td>
-            <td>$${p.Stop_Loss ?? ''}</td>`;
+            <td>${p.ticker ?? ''}</td>
+            <td>${p.shares ?? ''}</td>
+            <td>$${p.cost_basis?.toFixed ? p.cost_basis.toFixed(2) : p.cost_basis ?? ''}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${p.stop_loss ? `$${p.stop_loss}` : ''}</td>`;
           tbody.appendChild(tr);
         });
       }
@@ -248,39 +248,31 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       hideError();
       const data = await fetchJson('/api/trade-log', { method: 'GET' });
+      const trades = data.trades || [];
 
       const tbody = document.getElementById('tradeLogBody');
       if (tbody) {
         tbody.innerHTML = '';
-        let wins = 0;
-        let sells = 0;
-
-        (data || []).forEach(item => {
+        trades.forEach(item => {
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${item.Date ?? ''}</td>
-            <td>${item.Ticker ?? ''}</td>
-            <td>${item.Action ?? ''}</td>
-            <td>$${item.Price ?? ''}</td>
-            <td>${item.Quantity ?? ''}</td>
-            <td>${item.Reason ?? ''}</td>`;
+            <td>${item.date ?? ''}</td>
+            <td>${item.ticker ?? ''}</td>
+            <td>${item.side ?? ''}</td>
+            <td>$${item.price ?? ''}</td>
+            <td>${item.shares ?? ''}</td>
+            <td>${item.reason ?? ''}</td>`;
           tbody.appendChild(tr);
-
-          if (item.Action === 'Sell') {
-            sells++;
-            const pnl = parseFloat(item.PnL);
-            if (Number.isFinite(pnl) && pnl > 0) wins++;
-          }
         });
 
         const nEl = document.getElementById('numTrades');
-        if (nEl) nEl.textContent = (data || []).length;
+        if (nEl) nEl.textContent = trades.length;
 
         const wrEl = document.getElementById('winRate');
-        if (wrEl) wrEl.textContent = sells ? `${Math.round((wins / sells) * 100)}%` : '0%';
+        if (wrEl) wrEl.textContent = '0%';
       }
 
-      return (data || []).length > 0;
+      return trades.length > 0;
     } catch (err) {
       showError(err.message || 'Failed to load trade log', err);
       return false;
