@@ -165,18 +165,21 @@ def api_trade(user_id):
     stop_loss = float(data.get("stop_loss", 0) or 0)
     if not ticker or side not in {"BUY", "SELL"} or price <= 0 or shares <= 0:
         return jsonify({"message": "Invalid trade data"}), 400
-    if side == "BUY":
-        with begin_tx() as session:
-            balance = float(get_cash_balance(session))
-        if price * shares > balance:
-            return jsonify({"message": "You don't have enough cash to buy these shares"}), 400
-        cash, _ = ts.log_manual_buy(price, shares, ticker, stop_loss, balance, pd.DataFrame(), reason)
-    else:
-        with begin_tx() as session:
-            pos = get_position(session, ticker)
-            if pos is None or float(pos.shares) < shares:
-                return jsonify({"message": "You're trying to sell more shares than you own"}), 400
-        cash, _ = ts.log_manual_sell(price, shares, ticker, 0.0, pd.DataFrame(), reason)
+    try:
+        if side == "BUY":
+            with begin_tx() as session:
+                balance = float(get_cash_balance(session))
+            if price * shares > balance:
+                return jsonify({"message": "You don't have enough cash to buy these shares"}), 400
+            cash, _ = ts.log_manual_buy(price, shares, ticker, stop_loss, balance, pd.DataFrame(), reason)
+        else:
+            with begin_tx() as session:
+                pos = get_position(session, ticker)
+                if pos is None or float(pos.shares) < shares:
+                    return jsonify({"message": "You're trying to sell more shares than you own"}), 400
+            cash, _ = ts.log_manual_sell(price, shares, ticker, 0.0, pd.DataFrame(), reason)
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
     return jsonify({"message": "Trade recorded", "cash": cash})
 
 @app.route("/api/portfolio")
