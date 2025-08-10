@@ -387,10 +387,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function renderProcessedPortfolio(data) {
-    await loadPortfolio();
-  }
-
   // ----- Events --------------------------------------------------------------
   function wireEvents() {
     const tradeForm = document.getElementById('tradeForm');
@@ -453,11 +449,10 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    async function handleProcess(force = false) {
+    async function handleProcess() {
       try {
-        const body = force ? { force: true } : undefined;
-        const data = await fetchJson('/api/process-portfolio', { method: 'POST', body });
-        await renderProcessedPortfolio(data);
+        const data = await fetchJson('/api/process-portfolio', { method: 'POST' });
+        await loadPortfolio();
         if (data?.as_of_date_et && data?.totals?.total_equity != null) {
           upsertChartPoint(data.as_of_date_et, data.totals.total_equity);
         } else {
@@ -470,11 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const processBtn = document.getElementById('processPortfolioBtn');
     if (processBtn) {
-      processBtn.addEventListener('click', () => handleProcess(false));
-    }
-    const forceBtn = document.getElementById('forceProcessBtn');
-    if (forceBtn) {
-      forceBtn.addEventListener('click', () => handleProcess(true));
+      processBtn.addEventListener('click', handleProcess);
     }
   }
 });
