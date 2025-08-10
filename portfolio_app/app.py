@@ -8,7 +8,6 @@ from functools import wraps
 import os
 import csv
 from typing import Tuple, Any
-import yfinance as yf
 from pathlib import Path
 from werkzeug.exceptions import HTTPException
 
@@ -147,13 +146,9 @@ def user_needs_cash(user_id: int) -> bool:
 
 
 def is_valid_ticker(ticker: str) -> bool:
-    """Return True if ``ticker`` has market data via yfinance."""
+    """Return True if ``ticker`` has market data from any source."""
 
-    try:
-        data = yf.Ticker(ticker).history(period="1d")
-        return not data.empty
-    except Exception:
-        return False
+    return ts.is_valid_ticker(ticker)
 
 
 def init_db():
