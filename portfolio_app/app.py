@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory, send_file, render_template
 from flask_bcrypt import Bcrypt
+from flask_cors import CORS
 import sqlite3
 import jwt
 from datetime import datetime, timedelta
@@ -22,6 +23,7 @@ except Exception:  # pragma: no cover - streamlit is optional
 app = Flask(__name__, static_folder=None)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'change-this-secret')
 bcrypt = Bcrypt(app)
+CORS(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'Scripts and CSV Files')
