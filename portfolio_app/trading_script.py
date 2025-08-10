@@ -199,6 +199,7 @@ def process_portfolio(
     portfolio: pd.DataFrame | dict[str, list[object]] | list[dict[str, object]],
     cash: float,
     manual_trades: list[dict[str, object]] | None = None,
+    user_id: int = 1,
 ) -> tuple[pd.DataFrame, float]:
     if manual_trades:
         for trade in manual_trades:
@@ -313,7 +314,12 @@ def process_portfolio(
             "Total Equity": round(float(total_value + final_cash), 2),
         }
         results.append(total_row)
-        record_equity(session, datetime.today().date(), total_value + final_cash)
+        record_equity(
+            session,
+            datetime.today().date(),
+            total_value + final_cash,
+            user_id=user_id,
+        )
         portfolio_df = _positions_df(session)
     df = pd.DataFrame(results)[COLUMNS]
     return portfolio_df, float(final_cash)
