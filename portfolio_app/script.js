@@ -3,6 +3,10 @@
 document.addEventListener('DOMContentLoaded', () => {
   const token = localStorage.getItem('token');
   let startingCapital = null;
+  if (window.Chart && window.Chart.register && window.ChartZoom) {
+    Chart.register(window.ChartZoom);
+  }
+  let equityChartInstance = null;
 
   // ----- UI helpers ----------------------------------------------------------
   function showError(message, err, elementId = 'errorMessage') {
@@ -113,42 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(`Request timed out for ${url}`);
       }
       // Reframe generic network errors with likely causes
-      const msg = String(err.message || err);
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-        throw new Error('Could not reach the server. If your backend is running, check CORS/HTTPS settings and the route.');
-      }
-      throw err;
-    } finally {
-      clearTimeout(t);
-    }
-  }
-
-  // Blob fetch wrapper (for PNG chart)
-  async function fetchBlob(url, { expect = 'image/' } = {}) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
-    try {
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        signal: ctrl.signal,
-      });
-      await ensureOk(res, `Request failed for ${url}`, { expectContentType: expect });
-      const blob = await res.blob();
-
-      // If the server accidentally returned text/JSON, surface that helpfully
-      if (!blob.type || !blob.type.includes('image')) {
-        try {
-          const text = await blob.text();
-          throw new Error(`Chart endpoint returned non-image data: ${text.slice(0, 200)}`);
-        } catch {
-          throw new Error(`Chart endpoint returned non-image data (type: ${blob.type || 'unknown'})`);
-        }
-      }
-      return blob;
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        throw new Error(`Request timed out for ${url}`);
-      }
       const msg = String(err.message || err);
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
         throw new Error('Could not reach the server. If your backend is running, check CORS/HTTPS settings and the route.');
@@ -338,24 +306,108 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadEquityChart() {
-    const chart = document.getElementById('equityChart');
-    if (!chart) return;
+    const canvas = document.getElementById('equityChart');
+    const msgEl = document.getElementById('noDataMessage');
+    const resetBtn = document.getElementById('resetZoomBtn');
+    if (!canvas) return;
 
     try {
       hideError();
-      const blob = await fetchBlob('/api/equity-chart.png', { expect: 'image/png' });
-      chart.src = URL.createObjectURL(blob);
-    } catch (err) {
-      // Give specific hints for common root causes
-      let msg = err.message || 'Failed to load equity chart';
-      if (msg.includes('Unexpected response type')) {
-        // Typically a 401 JSON or HTML error page instead of PNG
-        // Keep the message as-is (already descriptive)
-      } else if (msg.includes('non-image data')) {
-        // Server returned JSON/text instead of a PNG
-        // Keep message as-is
+      const data = await fetchJson('/api/portfolio-history', { method: 'GET' });
+      if (!Array.isArray(data) || data.length === 0) {
+        canvas.classList.add('visually-hidden');
+        if (resetBtn) resetBtn.classList.add('visually-hidden');
+        if (msgEl) msgEl.classList.remove('visually-hidden');
+        if (equityChartInstance) {
+          equityChartInstance.destroy();
+          equityChartInstance = null;
+        }
+        return;
       }
-      showError(msg, err);
+
+      if (msgEl) msgEl.classList.add('visually-hidden');
+      canvas.classList.remove('visually-hidden');
+      if (resetBtn) resetBtn.classList.remove('visually-hidden');
+
+      const points = data.map(d => ({ x: d.date, y: d.equity }));
+
+      if (equityChartInstance) {
+        equityChartInstance.data.datasets[0].data = points;
+        equityChartInstance.update();
+        return;
+      }
+
+      equityChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          datasets: [{
+            data: points,
+            borderColor: '#1f77b4',
+            backgroundColor: '#1f77b4',
+            pointRadius: 3,
+            pointHoverRadius: 4,
+            fill: false,
+            tension: 0
+          }]
+        },
+        options: {
+          parsing: false,
+          responsive: true,
+          maintainAspectRatio: true,
+          interaction: { mode: 'nearest', intersect: false },
+          scales: {
+            x: {
+              type: 'time',
+              time: { parser: 'yyyy-MM-dd', tooltipFormat: 'MMM d, yyyy' },
+              grid: { color: '#e0e0e0' },
+              ticks: { color: '#000' }
+            },
+            y: {
+              grid: { color: '#e0e0e0' },
+              ticks: { color: '#000' },
+              title: { display: true, text: 'Equity ($)', color: '#000' }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}` } },
+            zoom: {
+              zoom: {
+                wheel: { enabled: true, modifierKey: 'alt' },
+                mode: 'x'
+              },
+              pan: {
+                enabled: true,
+                modifierKey: 'shift',
+                mode: 'x'
+              }
+            }
+          },
+          onClick: (evt, elements) => {
+            if (elements.length > 0 && equityChartInstance) {
+              const idx = elements[0].index;
+              const pt = equityChartInstance.data.datasets[0].data[idx];
+              console.log({ date: pt.x, equity: pt.y });
+            }
+          }
+        }
+      });
+
+      if (resetBtn) {
+        resetBtn.onclick = () => equityChartInstance.resetZoom();
+      }
+    } catch (err) {
+      if (equityChartInstance) {
+        equityChartInstance.destroy();
+        equityChartInstance = null;
+      }
+      canvas.classList.add('visually-hidden');
+      if (resetBtn) resetBtn.classList.add('visually-hidden');
+      if (msgEl) {
+        msgEl.textContent = 'No data available';
+        msgEl.classList.remove('visually-hidden');
+      }
+      showError(err.message || 'Failed to load equity chart', err);
     }
   }
 
