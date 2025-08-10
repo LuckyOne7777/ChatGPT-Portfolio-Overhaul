@@ -191,8 +191,11 @@ def get_close_price(
     if mode == "force":
         target_date = _prev_trading_day(target_date)
 
-    start = target_date - timedelta(days=3)
-    end = target_date + timedelta(days=1)
+    # Extend download window to reduce Yahoo Finance empty responses on force
+    # processing. A broader timeframe increases the chance of retrieving data
+    # for symbols that might otherwise fail due to narrow ranges.
+    start = target_date - timedelta(days=7)
+    end = target_date + timedelta(days=2)
     df = _safe_download(t, start, end)
     if df is not None and not df.empty:
         try:
