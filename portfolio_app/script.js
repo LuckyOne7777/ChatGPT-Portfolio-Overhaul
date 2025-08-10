@@ -319,12 +319,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const points = (Array.isArray(raw) ? raw : [])
         .map(d => {
-          const x = new Date(d.date + 'T00:00:00');
-          const y = Number(d.equity);
+          const y = new Date(d.date + 'T00:00:00');
+          const x = Number(d.equity);
           return { x, y };
         })
-        .filter(p => Number.isFinite(p.y) && !Number.isNaN(p.x.getTime()))
-        .sort((a, b) => a.x - b.x);
+        .filter(p => Number.isFinite(p.x) && !Number.isNaN(p.y.getTime()))
+        .sort((a, b) => a.y - b.y);
 
       console.log('equity points', points.length, points.at?.(0), points.at?.(-1));
       if (!points.length) {
@@ -366,23 +366,28 @@ document.addEventListener('DOMContentLoaded', () => {
           interaction: { mode: 'nearest', intersect: false },
           scales: {
             x: {
-              type: 'time',
-              time: { tooltipFormat: 'MMM d, yyyy' },
-              grid: { color: '#e0e0e0' },
-              ticks: { color: '#000' }
-            },
-            y: {
               grid: { color: '#e0e0e0' },
               ticks: { color: '#000' },
               title: { display: true, text: 'Equity ($)', color: '#000' }
+            },
+            y: {
+              type: 'time',
+              time: { unit: 'day', tooltipFormat: 'MMM d, yyyy' },
+              grid: { color: '#e0e0e0' },
+              ticks: { color: '#000' },
+              title: { display: true, text: 'Date', color: '#000' }
             }
           },
           plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}` } },
+            tooltip: {
+              callbacks: {
+                label: ctx => `$${ctx.parsed.x.toFixed(2)}`
+              }
+            },
             zoom: {
-              zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'x' },
-              pan: { enabled: true, modifierKey: 'shift', mode: 'x' }
+              zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'y' },
+              pan: { enabled: true, modifierKey: 'shift', mode: 'y' }
             }
           }
         }
