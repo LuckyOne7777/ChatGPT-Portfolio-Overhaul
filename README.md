@@ -22,13 +22,13 @@ Originally built for my AI-led micro-cap experiment, now open for others to use.
 First, install necessary libraries:
 
 ```bash
-pip install -r requirements.txt
+pip install -r portfolio_app/requirements.txt
 ```
 
 Then run the script `app.py`.
 
 ```bash
-python app.py
+python portfolio_app/app.py
 ```
 
 The output should look like this:
@@ -52,5 +52,6 @@ That's it! from there you can interact with the webpage.
 Find a bug or have a suggestion?
 
 Gmail: nathanbsmith.business@gmail.com 
+
 
 
