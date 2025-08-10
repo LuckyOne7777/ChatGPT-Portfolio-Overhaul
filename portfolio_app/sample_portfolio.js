@@ -142,26 +142,4 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSamplePortfolio();
     loadSampleEquityChart();
 
-    const token = localStorage.getItem('token');
-    const processBtn = document.getElementById('processPortfolioBtn');
-    if (processBtn) {
-        processBtn.addEventListener('click', async () => {
-            if (!token) {
-                alert('Please log in to process the portfolio');
-                return;
-            }
-            try {
-                const res = await fetch('/api/process-portfolio', {
-                    method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (!res.ok) throw new Error('Failed to process portfolio');
-                alert('Portfolio processed successfully');
-                await loadSamplePortfolio();
-            } catch (err) {
-                console.error(err);
-                alert('Failed to process portfolio');
-            }
-        });
-    }
 });
