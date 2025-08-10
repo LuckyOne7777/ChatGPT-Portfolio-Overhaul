@@ -2,6 +2,10 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   const token = localStorage.getItem('token');
+  if (window.Chart && window.ChartZoom) {
+    Chart.register(window.ChartZoom);
+  }
+  let equityChart;
 
   // ----- UI helpers ----------------------------------------------------------
   function showError(message, err, elementId = 'errorMessage') {
@@ -102,42 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(`Request timed out for ${url}`);
       }
       // Reframe generic network errors with likely causes
-      const msg = String(err.message || err);
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-        throw new Error('Could not reach the server. If your backend is running, check CORS/HTTPS settings and the route.');
-      }
-      throw err;
-    } finally {
-      clearTimeout(t);
-    }
-  }
-
-  // Blob fetch wrapper (for PNG chart)
-  async function fetchBlob(url, { expect = 'image/' } = {}) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
-    try {
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        signal: ctrl.signal,
-      });
-      await ensureOk(res, `Request failed for ${url}`, { expectContentType: expect });
-      const blob = await res.blob();
-
-      // If the server accidentally returned text/JSON, surface that helpfully
-      if (!blob.type || !blob.type.includes('image')) {
-        try {
-          const text = await blob.text();
-          throw new Error(`Chart endpoint returned non-image data: ${text.slice(0, 200)}`);
-        } catch {
-          throw new Error(`Chart endpoint returned non-image data (type: ${blob.type || 'unknown'})`);
-        }
-      }
-      return blob;
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        throw new Error(`Request timed out for ${url}`);
-      }
       const msg = String(err.message || err);
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
         throw new Error('Could not reach the server. If your backend is running, check CORS/HTTPS settings and the route.');
@@ -288,24 +256,94 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadEquityChart() {
-    const chart = document.getElementById('equityChart');
-    if (!chart) return;
+    const canvas = document.getElementById('equityChart');
+    const resetBtn = document.getElementById('resetZoom');
+    if (!canvas) return;
 
     try {
       hideError();
-      const blob = await fetchBlob('/api/equity-chart.png', { expect: 'image/png' });
-      chart.src = URL.createObjectURL(blob);
-    } catch (err) {
-      // Give specific hints for common root causes
-      let msg = err.message || 'Failed to load equity chart';
-      if (msg.includes('Unexpected response type')) {
-        // Typically a 401 JSON or HTML error page instead of PNG
-        // Keep the message as-is (already descriptive)
-      } else if (msg.includes('non-image data')) {
-        // Server returned JSON/text instead of a PNG
-        // Keep message as-is
+      const data = await fetchJson('/api/portfolio-history');
+      if (!Array.isArray(data) || data.length === 0) {
+        const msgEl = document.createElement('p');
+        msgEl.textContent = 'No data available';
+        canvas.replaceWith(msgEl);
+        if (resetBtn) resetBtn.remove();
+        return;
       }
-      showError(msg, err);
+
+      const points = data.map(d => ({ x: d.date, y: parseFloat(d.equity) }));
+      if (equityChart) equityChart.destroy();
+
+      equityChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Equity',
+            data: points,
+            borderColor: '#1f77b4',
+            backgroundColor: '#1f77b4',
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#1f77b4',
+            pointHoverBackgroundColor: '#1f77b4',
+            fill: false,
+            tension: 0,
+          }]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'nearest', intersect: true },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: ctx => `$${ctx.parsed.y.toFixed(2)}`
+              }
+            },
+            zoom: {
+              zoom: {
+                wheel: { enabled: true, modifierKey: 'alt' },
+                mode: 'x'
+              },
+              pan: {
+                enabled: true,
+                modifierKey: 'shift',
+                mode: 'x'
+              }
+            }
+          },
+          onClick: (evt, elements) => {
+            if (elements.length > 0) {
+              const p = equityChart.data.datasets[0].data[elements[0].index];
+              console.log({ date: p.x, equity: p.y });
+            }
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: { parser: 'yyyy-MM-dd', tooltipFormat: 'PP' },
+              ticks: { color: '#000' },
+              grid: { color: '#e0e0e0' }
+            },
+            y: {
+              ticks: {
+                color: '#000',
+                callback: v => `$${v}`
+              },
+              grid: { color: '#e0e0e0' }
+            }
+          }
+        }
+      });
+
+      if (resetBtn) {
+        resetBtn.onclick = () => equityChart.resetZoom();
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to load equity history', err);
+      const msgEl = document.createElement('p');
+      msgEl.textContent = 'No data available';
+      canvas.replaceWith(msgEl);
+      if (resetBtn) resetBtn.remove();
     }
   }
 

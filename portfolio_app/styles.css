@@ -101,6 +101,18 @@ main {
     padding: 1rem;
 }
 
+.chart-container {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+    height: 400px;
+    margin: 0 auto;
+}
+
+#resetZoom {
+    margin-top: 0.5rem;
+}
+
 .timeframe-buttons {
     margin-bottom: 1rem;
 }
