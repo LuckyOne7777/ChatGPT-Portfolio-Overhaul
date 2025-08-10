@@ -141,18 +141,95 @@ def looks_invalid_ticker(t: str) -> bool:
     return not t or any(ch.isspace() for ch in t) or len(t) > 10
 
 
+def _stooq_symbol(ticker: str) -> str:
+    t = ticker.lower()
+    return t if "." in t else f"{t}.us"
+
+
 def _safe_download(ticker: str, start: date, end: date) -> pd.DataFrame | None:
-    last_err: Exception | None = None
-    for i in range(3):
+    try:
+        df = yf.download(ticker, period="20d", progress=False)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            df = df.tail(60)
+            if df.index.tz is None:
+                df.index = df.index.tz_localize("UTC").tz_convert(US_EASTERN)
+            else:
+                df.index = df.index.tz_convert(US_EASTERN)
+            if "Adj Close" not in df.columns:
+                df["Adj Close"] = df["Close"]
+            for col in ["Open", "High", "Low"]:
+                if col not in df.columns:
+                    df[col] = df["Close"]
+            df = df[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+            for col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+            return df
+    except Exception:
+        pass
+
+    period_days = max(1, (end - start).days) if start and end else 20
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        df = ticker_obj.history(period=f"{period_days}d", interval="1d", raise_errors=False)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            df = df.tail(60)
+            if df.index.tz is None:
+                df.index = df.index.tz_localize("UTC").tz_convert(US_EASTERN)
+            else:
+                df.index = df.index.tz_convert(US_EASTERN)
+            if "Adj Close" not in df.columns:
+                df["Adj Close"] = df["Close"]
+            for col in ["Open", "High", "Low"]:
+                if col not in df.columns:
+                    df[col] = df["Close"]
+            df = df[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+            for col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+            return df
+        price = None
         try:
-            df = yf.download(ticker, start=start, end=end, progress=False)
-            if not df.empty:
-                return df
-        except (JSONDecodeError, KeyError, ValueError, RequestException, Exception) as e:
-            last_err = e
-        time_module.sleep(0.5 * (i + 1))
-    if last_err:
-        app.logger.warning("download_failed %s %s", ticker, last_err)
+            price = ticker_obj.fast_info.get("last_price")
+        except Exception:
+            price = None
+        if price:
+            dt = datetime.now(US_EASTERN).replace(hour=0, minute=0, second=0, microsecond=0)
+            df = pd.DataFrame(
+                {
+                    "Open": [price],
+                    "High": [price],
+                    "Low": [price],
+                    "Close": [price],
+                    "Adj Close": [price],
+                    "Volume": [0],
+                },
+                index=pd.DatetimeIndex([dt], tz=US_EASTERN),
+            )
+            return df
+    except Exception:
+        pass
+
+    try:
+        symbol = _stooq_symbol(ticker)
+        url = f"https://stooq.com/q/d/l/?s={symbol}&i=d"
+        df = pd.read_csv(url, sep=None, engine="python")
+        if df.empty:
+            return None
+        df = df.tail(60)
+        df["Date"] = pd.to_datetime(df["Date"]).dt.tz_localize("America/New_York")
+        df.set_index("Date", inplace=True)
+        if "Adj Close" not in df.columns:
+            df["Adj Close"] = df["Close"]
+        for col in ["Open", "High", "Low"]:
+            if col not in df.columns:
+                df[col] = df["Close"]
+        for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        df = df[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+        app.logger.info("stooq_fallback_used %s", ticker)
+        print(f"[INFO] Using Stooq fallback for {ticker} — Yahoo returned bad/empty data.")
+        return df
+    except Exception as e:
+        app.logger.warning("download_failed %s %s", ticker, e)
     return None
 
 
