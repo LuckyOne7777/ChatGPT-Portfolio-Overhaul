@@ -15,6 +15,72 @@ from typing import Any, cast
 import os
 import time
 
+
+def price_fallback(ticker: str) -> pd.DataFrame | None:
+    """Return price data from a secondary source.
+
+    Currently uses the public Stooq CSV API which provides the latest
+    ``Close`` and ``Low`` prices. ``None`` is returned if the data cannot
+    be fetched.
+    """
+
+    try:
+        url = f"https://stooq.com/q/l/?s={ticker.lower()}&f=sd2t2ohlcv&h&e=csv"
+        df = pd.read_csv(url)
+        if df.empty or df["Close"].isna().all() or df["Low"].isna().all():
+            return None
+        return pd.DataFrame({
+            "Close": [float(df["Close"].iloc[0])],
+            "Low": [float(df["Low"].iloc[0])],
+        })
+    except Exception:
+        return None
+
+
+def fetch_history_with_retry(
+    ticker: str, retries: int = 3, delay: float = 1.0
+) -> tuple[pd.DataFrame | None, str]:
+    """Fetch ticker history with retries and fallback.
+
+    Returns a tuple ``(data, source)`` where ``source`` is ``"primary"``,
+    ``"fallback"``, or ``"failed"``. ``data`` is a ``DataFrame`` on success
+    or ``None`` if all sources failed.
+    """
+
+    last_err: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            ticker_obj = yf.Ticker(ticker)
+            data = ticker_obj.history(period="1d")
+            if data.empty:
+                data = ticker_obj.history(period="5d")
+                data = data.dropna(subset=["Close", "Low"])
+            if not data.empty:
+                if attempt > 1:
+                    print(
+                        f"{ticker}: yfinance recovered after attempt {attempt}"
+                    )
+                return data, "primary"
+        except Exception as err:  # pragma: no cover - network issues
+            last_err = err
+            print(f"{ticker}: yfinance attempt {attempt} failed - {err}")
+        time.sleep(delay)
+
+    print(
+        f"{ticker}: yfinance failed after {retries} attempts"
+        + (f" ({last_err})" if last_err else "")
+    )
+
+    fallback = price_fallback(ticker)
+    if fallback is not None:
+        print(f"{ticker}: fallback price source succeeded")
+        return fallback, "fallback"
+
+    print(
+        f"{ticker}: both primary and fallback price sources failed; marking as delisted"
+    )
+    return None, "failed"
+
 COLUMNS = [
     "Date",
     "Ticker",
@@ -60,13 +126,10 @@ day = now.weekday()
 
 
 def is_valid_ticker(ticker: str) -> bool:
-    """Return True if ``ticker`` has market data via yfinance."""
+    """Return True if ``ticker`` has market data from any source."""
 
-    try:
-        data = yf.Ticker(ticker).history(period="1d")
-        return not data.empty
-    except Exception:
-        return False
+    data, _ = fetch_history_with_retry(ticker)
+    return data is not None
 
 
 
@@ -170,71 +233,30 @@ def process_portfolio(
         buy_price = stock["buy_price"]
         cost_basis = buy_price * shares
         stop = stock["stop_loss"]
-        data = yf.Ticker(ticker).history(period="1d")
 
-        if data.empty:
-            # When forcing a run outside market hours, ``history('1d')`` can be empty.
-            # Fallback to a longer period and grab the last available close so we
-            # don't accidentally default to the buy price.
-            data = yf.Ticker(ticker).history(period="5d")
-            data = data.dropna(subset=["Close", "Low"])
+        data, source = fetch_history_with_retry(ticker)
 
-        if data.empty:
-            # Fall back to the most recently logged closing price in the portfolio
-            # CSV so that forced processing uses a realistic price instead of the
-            # original buy-in.
-            fallback_price: float | None = None
-            if PORTFOLIO_CSV.exists():
-                try:
-                    prev = pd.read_csv(PORTFOLIO_CSV)
-                    prev = prev[prev["Ticker"] == ticker]
-                    if not prev.empty:
-                        prev["Date"] = pd.to_datetime(prev["Date"], errors="coerce")
-                        prev = prev.sort_values("Date")
-                        cp = prev["Current Price"].iloc[-1]
-                        if pd.notna(cp) and cp != "":
-                            fallback_price = float(cp)
-                except Exception:  # pragma: no cover - defensive
-                    fallback_price = None
-
-            if fallback_price is None:
-                print(f"No data for {ticker}")
-                row = {
-                    "Date": today,
-                    "Ticker": ticker,
-                    "Shares": shares,
-                    "Buy Price": buy_price,
-                    "Cost Basis": cost_basis,
-                    "Stop Loss": stop,
-                    "Current Price": "",
-                    "Total Value": "",
-                    "PnL": "",
-                    "Action": "NO DATA",
-                    "Cash Balance": "",
-                    "Total Equity": "",
-                }
-            else:
-                price = fallback_price
-                value = round(price * shares, 2)
-                pnl = round((price - buy_price) * shares, 2)
-                action = "HOLD"
-                total_value += value
-                total_pnl += pnl
-                row = {
-                    "Date": today,
-                    "Ticker": ticker,
-                    "Shares": shares,
-                    "Buy Price": buy_price,
-                    "Cost Basis": cost_basis,
-                    "Stop Loss": stop,
-                    "Current Price": price,
-                    "Total Value": value,
-                    "PnL": pnl,
-                    "Action": action,
-                    "Cash Balance": "",
-                    "Total Equity": "",
-                }
+        if data is None:
+            # Even the fallback source failed; consider the ticker delisted.
+            print(f"{ticker}: no data available from any source; marking as delisted")
+            row = {
+                "Date": today,
+                "Ticker": ticker,
+                "Shares": shares,
+                "Buy Price": buy_price,
+                "Cost Basis": cost_basis,
+                "Stop Loss": stop,
+                "Current Price": "",
+                "Total Value": "",
+                "PnL": "",
+                "Action": "DELISTED",
+                "Cash Balance": "",
+                "Total Equity": "",
+            }
         else:
+            if source == "fallback":
+                print(f"{ticker}: price retrieved via fallback source")
+
             low_price = round(float(data["Low"].iloc[-1]), 2)
             close_price = round(float(data["Close"].iloc[-1]), 2)
 
