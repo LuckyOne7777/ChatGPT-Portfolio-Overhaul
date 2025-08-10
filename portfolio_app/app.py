@@ -6,6 +6,8 @@ from functools import wraps
 import os
 import sqlite3
 from typing import Literal
+import time as time_module
+from json import JSONDecodeError
 
 import jwt
 import pandas as pd
@@ -13,6 +15,7 @@ import yfinance as yf
 from flask import Flask, jsonify, request, render_template
 from zoneinfo import ZoneInfo
 from flask_bcrypt import Bcrypt
+from requests.exceptions import RequestException
 
 import trading_script as ts
 from repo import (
@@ -127,6 +130,32 @@ def _next_trading_day(d: date) -> date:
             return nxt
 
 
+def _prev_trading_day(d: date) -> date:
+    prev = d - timedelta(days=1)
+    while not _is_trading_day(prev):
+        prev -= timedelta(days=1)
+    return prev
+
+
+def looks_invalid_ticker(t: str) -> bool:
+    return not t or any(ch.isspace() for ch in t) or len(t) > 10
+
+
+def _safe_download(ticker: str, start: date, end: date) -> pd.DataFrame | None:
+    last_err: Exception | None = None
+    for i in range(3):
+        try:
+            df = yf.download(ticker, start=start, end=end, progress=False)
+            if not df.empty:
+                return df
+        except (JSONDecodeError, KeyError, ValueError, RequestException, Exception) as e:
+            last_err = e
+        time_module.sleep(0.5 * (i + 1))
+    if last_err:
+        app.logger.warning("download_failed %s %s", ticker, last_err)
+    return None
+
+
 def _check_market_window(now: datetime) -> tuple[bool, str, datetime]:
     """Return (allowed, reason, reference_dt)."""
     today = now.date()
@@ -144,32 +173,46 @@ def get_close_price(
     ticker: str,
     mode: Literal["regular", "force"],
     now_utc: datetime,
-    fallback: float,
-) -> tuple[float, date, str]:
-    """Fetch the most recent close for *ticker*.
+    buy_price: float | None = None,
+) -> tuple[float, str, str]:
+    """Return (price, as_of_date_et, source)."""
 
-    Returns (price, as_of_date, source). If fetching fails, returns
-    (fallback, today's ET date, "fallback").
-    """
     now_et = now_utc.astimezone(US_EASTERN)
-    for _ in range(3):
+    today_str = now_et.date().isoformat()
+
+    t = ticker.strip().upper().translate(str.maketrans({c: "" for c in "'`\"“”‘’"}))
+    if looks_invalid_ticker(t):
+        app.logger.warning("invalid_ticker %s", ticker)
+        if buy_price and buy_price > 0:
+            return float(buy_price), today_str, "fallback_buy"
+        return 0.0, today_str, "fallback_zero"
+
+    target_date = now_et.date()
+    if mode == "force":
+        target_date = _prev_trading_day(target_date)
+
+    start = target_date - timedelta(days=3)
+    end = target_date + timedelta(days=1)
+    df = _safe_download(t, start, end)
+    if df is not None and not df.empty:
         try:
-            df = yf.download(ticker, period="5d", interval="1d", progress=False)
-            if df.empty:
-                raise ValueError("no data")
-            # yfinance returns index in UTC; convert to ET
             df.index = df.index.tz_localize(ZoneInfo("UTC")).tz_convert(US_EASTERN)
-            last_row = df.iloc[-1]
-            last_date = df.index[-1].date()
-            if mode == "regular" and last_date < now_et.date():
-                # Today's bar missing; use previous row if exists
-                if len(df) >= 2:
-                    last_row = df.iloc[-2]
-                    last_date = df.index[-2].date()
-            return float(last_row["Close"]), last_date, "close"
-        except Exception:
-            continue
-    return float(fallback), now_et.date(), "fallback"
+        except TypeError:
+            df.index = df.index.tz_convert(US_EASTERN)
+        rows = df[df.index.date == target_date]
+        if not rows.empty:
+            price = float(rows["Close"].iloc[-1])
+            return price, target_date.isoformat(), "close"
+        prev_rows = df[df.index.date <= target_date]
+        if not prev_rows.empty:
+            row = prev_rows.iloc[-1]
+            date_str = row.name.date().isoformat()
+            source = "prev_close" if date_str < target_date.isoformat() else "close"
+            return float(row["Close"]), date_str, source
+
+    if buy_price and buy_price > 0:
+        return float(buy_price), today_str, "fallback_buy"
+    return 0.0, today_str, "fallback_zero"
 
 
 def process_portfolio(user_id: int, manual_trades: list[dict[str, object]] | None = None) -> None:
@@ -388,7 +431,7 @@ def api_process_portfolio(user_id):
     positions_out: list[dict[str, float | str]] = []
     total_positions_value = 0.0
     total_pnl = 0.0
-    as_of_date = None
+    as_of_date: str | None = None
 
     for pos in positions:
         shares = float(pos.shares)
@@ -396,6 +439,8 @@ def api_process_portfolio(user_id):
         px, px_date, source = get_close_price(pos.ticker, mode, now_utc, buy_price)
         if as_of_date is None or px_date > as_of_date:
             as_of_date = px_date
+        if source.startswith("fallback"):
+            app.logger.warning("price_fallback %s %s", pos.ticker, source)
         position_value = shares * px
         pnl = (px - buy_price) * shares
         total_positions_value += position_value
@@ -420,13 +465,14 @@ def api_process_portfolio(user_id):
     }
 
     if as_of_date is None:
-        as_of_date = now_utc.astimezone(US_EASTERN).date()
+        as_of_date = now_utc.astimezone(US_EASTERN).date().isoformat()
 
+    as_of_date_obj = datetime.strptime(as_of_date, "%Y-%m-%d").date()
     with begin_tx() as session:
         upsert_equity(
             session,
             user_id,
-            as_of_date,
+            as_of_date_obj,
             Decimal(str(totals["total_equity"])),
             process_type="force" if force else "regular",
             is_final=not force,
@@ -437,7 +483,7 @@ def api_process_portfolio(user_id):
             "message": "Portfolio processed",
             "forced": force,
             "date": datetime.now(US_EASTERN).date().isoformat(),
-            "as_of_date_et": as_of_date.isoformat(),
+            "as_of_date_et": as_of_date,
             "positions": positions_out,
             "totals": totals,
         }
