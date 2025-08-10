@@ -176,7 +176,7 @@ def process_portfolio(user_id: int, manual_trades: list[dict[str, object]] | Non
     """Wrapper to keep business logic isolated from the route."""
     portfolio, cash = ts.load_latest_portfolio_state("")
     portfolio_df = portfolio if isinstance(portfolio, pd.DataFrame) else pd.DataFrame(portfolio)
-    ts.process_portfolio(portfolio_df, cash, manual_trades)
+    ts.process_portfolio(portfolio_df, cash, manual_trades, user_id=user_id)
 
 @app.route("/api/register", methods=["POST"])
 def register():
