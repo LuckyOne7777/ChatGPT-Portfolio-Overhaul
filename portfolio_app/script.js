@@ -5,7 +5,37 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.Chart && window.ChartZoom) {
     Chart.register(window.ChartZoom);
   }
-  let equityChart;
+  let equityChartInstance;
+
+  function upsertChartPoint(dateStr, equity) {
+    // dateStr is 'YYYY-MM-DD' in ET
+    const y = Number(equity);
+    if (!Number.isFinite(y)) return;
+
+    // Ensure chart exists; if not, call loadEquityChart() and return early
+    if (!equityChartInstance) { loadEquityChart(); return; }
+
+    const ptDate = new Date(dateStr + 'T00:00:00');
+    const data = equityChartInstance.data.datasets[0].data || [];
+
+    // Find existing point for that calendar day and replace it
+    const idx = data.findIndex(p => {
+      const d = p.x instanceof Date ? p.x : new Date(p.x);
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0,10) === dateStr;
+    });
+
+    if (idx !== -1) {
+      data[idx] = { x: ptDate, y };
+    } else {
+      data.push({ x: ptDate, y });
+    }
+
+    // Keep points sorted by date
+    data.sort((a, b) => (a.x instanceof Date ? a.x : new Date(a.x)) - (b.x instanceof Date ? b.x : new Date(b.x)));
+
+    equityChartInstance.data.datasets[0].data = data;
+    equityChartInstance.update('none');
+  }
 
   // ----- UI helpers ----------------------------------------------------------
   function showError(message, err, elementId = 'errorMessage') {
@@ -86,9 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // JSON fetch wrapper with Authorization header and timeout
-  async function fetchJson(url, { method = 'GET', body, expect = 'application/json' } = {}) {
+  async function fetchJson(url, { method = 'GET', body, expect = 'application/json', timeoutMs = 15000 } = {}) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000); // 15s timeout
+    const t = setTimeout(() => ctrl.abort(), timeoutMs); // configurable timeout
     try {
       const res = await fetch(url, {
         method,
@@ -262,8 +292,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       hideError();
-      const data = await fetchJson('/api/portfolio-history');
-      if (!Array.isArray(data) || data.length === 0) {
+      const raw = await fetchJson('/api/portfolio-history');
+
+      const byDay = new Map(); // key: day string, value: equity number (last wins)
+      for (const d of Array.isArray(raw) ? raw : []) {
+        const day = typeof d.date === 'string' ? d.date.slice(0,10) : '';
+        const val = Number(d.equity);
+        if (day && Number.isFinite(val)) byDay.set(day, val);
+      }
+      const points = Array.from(byDay.entries())
+        .map(([day, eq]) => ({ x: new Date(day + 'T00:00:00'), y: eq }))
+        .sort((a,b) => a.x - b.x);
+
+      if (points.length === 0) {
         const msgEl = document.createElement('p');
         msgEl.textContent = 'No data available';
         canvas.replaceWith(msgEl);
@@ -271,10 +312,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const points = data.map(d => ({ x: d.date, y: parseFloat(d.equity) }));
-      if (equityChart) equityChart.destroy();
+      if (equityChartInstance) equityChartInstance.destroy();
 
-      equityChart = new Chart(canvas, {
+      equityChartInstance = new Chart(canvas, {
         type: 'line',
         data: {
           datasets: [{
@@ -313,7 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
           },
           onClick: (evt, elements) => {
             if (elements.length > 0) {
-              const p = equityChart.data.datasets[0].data[elements[0].index];
+              const p = equityChartInstance.data.datasets[0].data[elements[0].index];
               console.log({ date: p.x, equity: p.y });
             }
           },
@@ -336,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (resetBtn) {
-        resetBtn.onclick = () => equityChart.resetZoom();
+        resetBtn.onclick = () => equityChartInstance.resetZoom();
       }
     } catch (err) {
       showError(err.message || 'Failed to load equity history', err);
@@ -345,6 +385,10 @@ document.addEventListener('DOMContentLoaded', () => {
       canvas.replaceWith(msgEl);
       if (resetBtn) resetBtn.remove();
     }
+  }
+
+  async function renderProcessedPortfolio(data) {
+    await loadPortfolio();
   }
 
   // ----- Events --------------------------------------------------------------
@@ -409,18 +453,28 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    async function handleProcess(force = false) {
+      try {
+        const body = force ? { force: true } : undefined;
+        const data = await fetchJson('/api/process-portfolio', { method: 'POST', body });
+        await renderProcessedPortfolio(data);
+        if (data?.as_of_date_et && data?.totals?.total_equity != null) {
+          upsertChartPoint(data.as_of_date_et, data.totals.total_equity);
+        } else {
+          await loadEquityChart();
+        }
+      } catch (err) {
+        showError(err.message || 'Failed to process portfolio', err);
+      }
+    }
+
     const processBtn = document.getElementById('processPortfolioBtn');
     if (processBtn) {
-      processBtn.addEventListener('click', async () => {
-        try {
-          await fetchJson('/api/process-portfolio', { method: 'POST' });
-          alert('Portfolio processed successfully');
-          await loadPortfolio();
-          await loadEquityChart();
-        } catch (err) {
-          showError(err.message || 'Failed to process portfolio', err);
-        }
-      });
+      processBtn.addEventListener('click', () => handleProcess(false));
+    }
+    const forceBtn = document.getElementById('forceProcessBtn');
+    if (forceBtn) {
+      forceBtn.addEventListener('click', () => handleProcess(true));
     }
   }
 });
