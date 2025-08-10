@@ -383,24 +383,40 @@ def user_chart_png(user_id):
         buf.seek(0)
         return send_file(buf, mimetype='image/png')
 
-    dates = pd.to_datetime(chatgpt_totals['Date'])
-    vals = chatgpt_totals['Total Equity'].astype(float).values
-    dfp = pd.DataFrame({'Date': dates, 'ChatGPT': vals}).set_index('Date')
-
-    spx_series = sp500.set_index('Date')['SPX Value'].reindex(dfp.index).ffill()
-
-    df = pd.DataFrame({
-        'ChatGPT': dfp['ChatGPT'] / dfp['ChatGPT'].iloc[0] * 100.0,
-        'SPX': spx_series / spx_series.iloc[0] * 100.0,
-    }, index=dfp.index)
-
-    plt.style.use('default')
+    plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(df.index, df['ChatGPT'], label=f'{username}')
-    ax.plot(df.index, df['SPX'], label='S&P 500')
-    ax.set_title('Portfolio vs. S&P 500 (Indexed to 100)')
-    ax.set_xlabel('Date'); ax.set_ylabel('Index (100=baseline)')
-    ax.legend(); ax.grid(True); fig.autofmt_xdate()
+    ax.plot(
+        chatgpt_totals['Date'],
+        chatgpt_totals['Total Equity'],
+        label=f'{username}',
+        marker='o',
+        color='blue',
+        linewidth=2,
+    )
+    ax.plot(
+        sp500['Date'],
+        sp500['SPX Value'],
+        label='S&P 500',
+        marker='o',
+        color='orange',
+        linestyle='--',
+        linewidth=2,
+    )
+
+    final_date = chatgpt_totals['Date'].iloc[-1]
+    final_chatgpt = float(chatgpt_totals['Total Equity'].iloc[-1])
+    final_spx = float(sp500['SPX Value'].iloc[-1])
+    pct_chatgpt = (final_chatgpt - baseline_equity) / baseline_equity * 100
+    pct_spx = (final_spx - baseline_equity) / baseline_equity * 100
+    ax.text(final_date, final_chatgpt + 0.03 * baseline_equity, f"{pct_chatgpt:+.1f}%", color='blue', fontsize=9)
+    ax.text(final_date, final_spx + 0.03 * baseline_equity, f"{pct_spx:+.1f}%", color='orange', fontsize=9)
+
+    ax.set_title("ChatGPT's Micro Cap Portfolio vs. S&P 500")
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Total Equity ($)')
+    ax.legend()
+    ax.grid(True)
+    fig.autofmt_xdate()
 
     buf = BytesIO()
     fig.savefig(buf, format='png', bbox_inches='tight')
