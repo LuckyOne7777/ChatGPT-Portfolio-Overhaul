@@ -97,9 +97,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // JSON fetch wrapper with Authorization header and timeout
-  async function fetchJson(url, { method = 'GET', body, expect = 'application/json' } = {}) {
+  async function fetchJson(
+    url,
+    { method = 'GET', body, expect = 'application/json', timeoutMs = 15000 } = {}
+  ) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000); // 15s timeout
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(url, {
         method,
@@ -312,16 +315,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!canvas) return;
 
     try {
-      hideError();
-      const data = await fetchJson('/api/portfolio-history', { method: 'GET' });
-      if (!Array.isArray(data) || data.length === 0) {
+      const raw = await fetchJson('/api/portfolio-history', { method: 'GET', timeoutMs: 30000 });
+
+      const points = (Array.isArray(raw) ? raw : [])
+        .map(d => {
+          const x = new Date(d.date + 'T00:00:00');
+          const y = Number(d.equity);
+          return { x, y };
+        })
+        .filter(p => Number.isFinite(p.y) && !Number.isNaN(p.x.getTime()))
+        .sort((a, b) => a.x - b.x);
+
+      console.log('equity points', points.length, points.at?.(0), points.at?.(-1));
+      if (!points.length) {
         canvas.classList.add('visually-hidden');
         if (resetBtn) resetBtn.classList.add('visually-hidden');
-        if (msgEl) msgEl.classList.remove('visually-hidden');
-        if (equityChartInstance) {
-          equityChartInstance.destroy();
-          equityChartInstance = null;
-        }
+        if (msgEl) { msgEl.textContent = 'No data available'; msgEl.classList.remove('visually-hidden'); }
+        if (equityChartInstance) { equityChartInstance.destroy(); equityChartInstance = null; }
+        console.log('equity raw payload', raw);
         return;
       }
 
@@ -329,11 +340,9 @@ document.addEventListener('DOMContentLoaded', () => {
       canvas.classList.remove('visually-hidden');
       if (resetBtn) resetBtn.classList.remove('visually-hidden');
 
-      const points = data.map(d => ({ x: d.date, y: d.equity }));
-
       if (equityChartInstance) {
         equityChartInstance.data.datasets[0].data = points;
-        equityChartInstance.update();
+        equityChartInstance.update('none');
         return;
       }
 
@@ -358,7 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
           scales: {
             x: {
               type: 'time',
-              time: { parser: 'yyyy-MM-dd', tooltipFormat: 'MMM d, yyyy' },
+              time: { tooltipFormat: 'MMM d, yyyy' },
               grid: { color: '#e0e0e0' },
               ticks: { color: '#000' }
             },
@@ -372,42 +381,21 @@ document.addEventListener('DOMContentLoaded', () => {
             legend: { display: false },
             tooltip: { callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}` } },
             zoom: {
-              zoom: {
-                wheel: { enabled: true, modifierKey: 'alt' },
-                mode: 'x'
-              },
-              pan: {
-                enabled: true,
-                modifierKey: 'shift',
-                mode: 'x'
-              }
-            }
-          },
-          onClick: (evt, elements) => {
-            if (elements.length > 0 && equityChartInstance) {
-              const idx = elements[0].index;
-              const pt = equityChartInstance.data.datasets[0].data[idx];
-              console.log({ date: pt.x, equity: pt.y });
+              zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'x' },
+              pan: { enabled: true, modifierKey: 'shift', mode: 'x' }
             }
           }
         }
       });
 
-      if (resetBtn) {
-        resetBtn.onclick = () => equityChartInstance.resetZoom();
-      }
+      if (resetBtn) resetBtn.onclick = () => equityChartInstance.resetZoom();
+
     } catch (err) {
-      if (equityChartInstance) {
-        equityChartInstance.destroy();
-        equityChartInstance = null;
-      }
+      if (equityChartInstance) { equityChartInstance.destroy(); equityChartInstance = null; }
       canvas.classList.add('visually-hidden');
       if (resetBtn) resetBtn.classList.add('visually-hidden');
-      if (msgEl) {
-        msgEl.textContent = 'No data available';
-        msgEl.classList.remove('visually-hidden');
-      }
-      showError(err.message || 'Failed to load equity chart', err);
+      if (msgEl) { msgEl.textContent = 'No data available'; msgEl.classList.remove('visually-hidden'); }
+      console.error('Failed to load equity chart', err);
     }
   }
 
