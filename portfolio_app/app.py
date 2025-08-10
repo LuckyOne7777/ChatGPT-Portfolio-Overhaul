@@ -3,16 +3,14 @@ from __future__ import annotations
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from functools import wraps
-import io
 import os
 import sqlite3
 from typing import Literal
 
 import jwt
 import pandas as pd
-import matplotlib.pyplot as plt
 import yfinance as yf
-from flask import Flask, jsonify, request, render_template, send_file
+from flask import Flask, jsonify, request, render_template
 from zoneinfo import ZoneInfo
 from flask_bcrypt import Bcrypt
 
@@ -320,37 +318,16 @@ def api_trade_log(user_id):
     ]
     return jsonify({"trades": rows})
 
-@app.route("/api/equity-history")
+@app.route("/api/portfolio-history")
 @token_required
-def api_equity_history(user_id):
+def api_portfolio_history(user_id):
     with begin_tx() as session:
         history = get_equity_series(session, user_id)
     rows = [
-        {"date": h.date.isoformat(), "equity": float(h.portfolio_equity)} for h in history
+        {"date": h.date.isoformat(), "equity": float(h.portfolio_equity)}
+        for h in history
     ]
-    return jsonify({"history": rows})
-
-
-@app.route("/api/equity-chart.png")
-@token_required
-def api_equity_chart(user_id):
-    with begin_tx() as session:
-        history = get_equity_series(session, user_id)
-    if not history:
-        return jsonify({"message": "No equity history"}), 404
-    dates = [h.date for h in history]
-    equity = [float(h.portfolio_equity) for h in history]
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(dates, equity, label="Portfolio")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Portfolio Equity ($)")
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    buf.seek(0)
-    return send_file(buf, mimetype="image/png")
+    return jsonify(rows)
 
 @app.route("/api/process-portfolio", methods=["POST"])
 @token_required

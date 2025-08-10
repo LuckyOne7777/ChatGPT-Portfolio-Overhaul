@@ -56,7 +56,11 @@
 
         <section id="graphs">
             <h2>Portfolio vs Benchmark</h2>
-            <img id="equityChart" alt="Equity history chart" />
+            <div id="equityChartWrapper" style="position: relative; height: 400px;">
+                <canvas id="equityChart"></canvas>
+                <p id="noDataMessage" class="visually-hidden">No data available</p>
+            </div>
+            <button id="resetZoomBtn" class="visually-hidden">Reset Zoom</button>
         </section>
 
         <section id="portfolio">
@@ -142,6 +146,9 @@
     <footer>
         <p>&copy; 2024 ChatGPT Micro-Cap Experiment. All rights reserved.</p>
     </footer>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <script src="/script.js"></script>
 </body>
 </html>
