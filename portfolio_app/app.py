@@ -188,7 +188,7 @@ def get_close_price(
         return 0.0, today_str, "fallback_zero"
 
     target_date = now_et.date()
-    if mode == "force":
+    if mode == "force" and not _is_trading_day(target_date):
         target_date = _prev_trading_day(target_date)
 
     # Extend download window to reduce Yahoo Finance empty responses on force

@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import sys
 import types
+import pandas as pd
 
 dummy_ts = types.ModuleType("trading_script")
 dummy_ts.load_latest_portfolio_state = lambda *a, **k: ([], 0.0)
@@ -64,3 +65,19 @@ def test_api_process_portfolio_force(monkeypatch):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["positions"][0]["price_source"] == "fallback_buy"
+
+
+def test_force_uses_current_trading_day(monkeypatch):
+    # Simulate data that has prices for Thursday and Friday
+    df = pd.DataFrame(
+        {"Close": [150.0, 200.0]},
+        index=pd.DatetimeIndex(
+            ["2024-01-04 21:00", "2024-01-05 21:00"], tz=ZoneInfo("UTC")
+        ),
+    )
+    monkeypatch.setattr(app_module, "_safe_download", lambda *a, **k: df)
+    now = datetime(2024, 1, 5, 21, tzinfo=ZoneInfo("UTC"))  # Friday after close
+    price, date_str, source = app_module.get_close_price("NVDA", "force", now)
+    assert price == 200.0
+    assert date_str == "2024-01-05"
+    assert source == "close"
