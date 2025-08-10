@@ -237,7 +237,11 @@ def process_portfolio(
             buy_price = float(pos.avg_price)
             cost_basis = buy_price * shares
             stop = float(pos.stop_loss or 0)
-            data = yf.Ticker(ticker).history(period="1d")
+            try:
+                data = yf.Ticker(ticker).history(period="1d")
+            except Exception as e:  # pragma: no cover - network errors
+                print(f"Failed to get ticker '{ticker}' reason: {e}")
+                data = pd.DataFrame()
             if data.empty:
                 row = {
                     "Date": today,
