@@ -15,23 +15,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Ensure chart exists; if not, call loadEquityChart() and return early
     if (!equityChartInstance) { loadEquityChart(); return; }
 
-    const ptDate = new Date(dateStr + 'T00:00:00');
     const data = equityChartInstance.data.datasets[0].data || [];
 
     // Find existing point for that calendar day and replace it
-    const idx = data.findIndex(p => {
-      const d = p.x instanceof Date ? p.x : new Date(p.x);
-      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0,10) === dateStr;
-    });
+    const idx = data.findIndex(p =>
+      typeof p.x === 'string' ? p.x === dateStr : new Date(p.x).toISOString().slice(0,10) === dateStr
+    );
 
     if (idx !== -1) {
-      data[idx] = { x: ptDate, y };
+      data[idx] = { x: dateStr, y };
     } else {
-      data.push({ x: ptDate, y });
+      data.push({ x: dateStr, y });
     }
 
     // Keep points sorted by date
-    data.sort((a, b) => (a.x instanceof Date ? a.x : new Date(a.x)) - (b.x instanceof Date ? b.x : new Date(b.x)));
+    data.sort((a, b) => new Date(a.x) - new Date(b.x));
 
     equityChartInstance.data.datasets[0].data = data;
     equityChartInstance.update('none');
@@ -301,8 +299,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (day && Number.isFinite(val)) byDay.set(day, val);
       }
       const points = Array.from(byDay.entries())
-        .map(([day, eq]) => ({ x: new Date(day + 'T00:00:00'), y: eq }))
-        .sort((a,b) => a.x - b.x);
+        .map(([day, eq]) => ({ x: day, y: eq }))
+        .sort((a, b) => new Date(a.x) - new Date(b.x));
 
       if (points.length === 0) {
         const msgEl = document.createElement('p');
@@ -360,7 +358,12 @@ document.addEventListener('DOMContentLoaded', () => {
           scales: {
             x: {
               type: 'time',
-              time: { parser: 'yyyy-MM-dd', tooltipFormat: 'PP' },
+              time: {
+                parser: 'yyyy-MM-dd',
+                unit: 'day',
+                tooltipFormat: 'MMM d',
+                displayFormats: { day: 'MMM d' }
+              },
               ticks: { color: '#000' },
               grid: { color: '#e0e0e0' }
             },

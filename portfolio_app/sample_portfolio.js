@@ -113,7 +113,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     scales: {
                         x: {
                             type: 'time',
-                            time: { parser: 'yyyy-MM-dd', tooltipFormat: 'PP' },
+                            time: {
+                                parser: 'yyyy-MM-dd',
+                                unit: 'day',
+                                tooltipFormat: 'MMM d',
+                                displayFormats: { day: 'MMM d' }
+                            },
                             ticks: { color: '#000' },
                             grid: { color: '#e0e0e0' }
                         },
