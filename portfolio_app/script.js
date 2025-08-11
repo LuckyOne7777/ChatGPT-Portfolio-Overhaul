@@ -372,7 +372,16 @@ document.addEventListener('DOMContentLoaded', () => {
           responsive: true,
           interaction: { mode: 'nearest', intersect: false },
           scales: {
-            x: { type: 'time', time: { tooltipFormat: 'MMM d, yyyy' }, grid: { color: '#e0e0e0' }, ticks: { color: '#000' } },
+            x: {
+              type: 'time',
+              time: {
+                unit: 'day',
+                tooltipFormat: 'MMM do, yyyy',
+                displayFormats: { day: 'MMM do' }
+              },
+              grid: { color: '#e0e0e0' },
+              ticks: { color: '#000' }
+            },
             y: { grid: { color: '#e0e0e0' }, ticks: { color: '#000' }, title: { display: true, text: 'Equity ($)', color: '#000' } }
           },
           plugins: {
