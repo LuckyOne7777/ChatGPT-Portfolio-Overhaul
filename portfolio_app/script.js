@@ -8,6 +8,43 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   let equityChartInstance = null;
 
+  function normalizeHistory(raw) {
+    // Deduplicate by 'YYYY-MM-DD' (last write wins), coerce to numbers, sort.
+    const byDay = new Map();
+    for (const d of Array.isArray(raw) ? raw : []) {
+      const day = typeof d.date === 'string' ? d.date.slice(0,10) : '';
+      const val = Number(d.equity);
+      if (day && Number.isFinite(val)) byDay.set(day, val);
+    }
+    return Array.from(byDay.entries())
+      .map(([day, eq]) => ({ x: new Date(day + 'T00:00:00'), y: eq }))
+      .filter(p => !Number.isNaN(p.x.getTime()) && Number.isFinite(p.y))
+      .sort((a,b) => a.x - b.x);
+  }
+
+  function upsertChartPoint(dateStr, equity) {
+    if (!equityChartInstance) return;
+    const y = Number(equity);
+    if (!Number.isFinite(y)) return;
+
+    const data = equityChartInstance.data.datasets[0].data || [];
+    const day = dateStr.slice(0,10);
+    const x = new Date(day + 'T00:00:00');
+
+    // Overwrite if exists, else append
+    const idx = data.findIndex(p => {
+      const d = p.x instanceof Date ? p.x : new Date(p.x);
+      return d.toISOString().slice(0,10) === day;
+    });
+
+    if (idx !== -1) data[idx] = { x, y };
+    else data.push({ x, y });
+
+    data.sort((a,b) => (a.x - b.x));
+    equityChartInstance.data.datasets[0].data = data;
+    equityChartInstance.update('none');
+  }
+
   // ----- UI helpers ----------------------------------------------------------
   function showError(message, err, elementId = 'errorMessage') {
     if (err) console.error(err);
@@ -310,35 +347,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadEquityChart() {
     const canvas = document.getElementById('equityChart');
-    const msgEl = document.getElementById('noDataMessage');
-    const resetBtn = document.getElementById('resetZoomBtn');
+    const msgEl  = document.getElementById('noDataMessage');
+    const reset  = document.getElementById('resetZoomBtn');
     if (!canvas) return;
 
     try {
+      hideError();
       const raw = await fetchJson('/api/portfolio-history', { method: 'GET', timeoutMs: 30000 });
+      const points = normalizeHistory(raw);
 
-      const points = (Array.isArray(raw) ? raw : [])
-        .map(d => {
-          const x = new Date(d.date + 'T00:00:00');
-          const y = Number(d.equity);
-          return { x, y };
-        })
-        .filter(p => !Number.isNaN(p.x.getTime()) && Number.isFinite(p.y))
-        .sort((a, b) => a.x - b.x);
-
-      console.log('equity points', points.length, points.at?.(0), points.at?.(-1));
       if (!points.length) {
         canvas.classList.add('visually-hidden');
-        if (resetBtn) resetBtn.classList.add('visually-hidden');
+        if (reset) reset.classList.add('visually-hidden');
         if (msgEl) { msgEl.textContent = 'No data available'; msgEl.classList.remove('visually-hidden'); }
         if (equityChartInstance) { equityChartInstance.destroy(); equityChartInstance = null; }
-        console.log('equity raw payload', raw);
         return;
       }
 
       if (msgEl) msgEl.classList.add('visually-hidden');
       canvas.classList.remove('visually-hidden');
-      if (resetBtn) resetBtn.classList.remove('visually-hidden');
+      if (reset) reset.classList.remove('visually-hidden');
 
       if (equityChartInstance) {
         equityChartInstance.data.datasets[0].data = points;
@@ -348,57 +376,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
       equityChartInstance = new Chart(canvas.getContext('2d'), {
         type: 'line',
-        data: {
-          datasets: [{
-            data: points,
-            borderColor: '#1f77b4',
-            backgroundColor: '#1f77b4',
-            pointRadius: 3,
-            pointHoverRadius: 4,
-            fill: false,
-            tension: 0
-          }]
-        },
+        data: { datasets: [{ data: points, borderColor: '#1f77b4', backgroundColor: '#1f77b4', pointRadius: 3, pointHoverRadius: 4, fill: false, tension: 0 }] },
         options: {
           parsing: false,
           responsive: true,
-          maintainAspectRatio: true,
           interaction: { mode: 'nearest', intersect: false },
           scales: {
-            x: {
-              type: 'time',
-              time: { unit: 'day', tooltipFormat: 'MMM d, yyyy' },
-              grid: { color: '#e0e0e0' },
-              ticks: { color: '#000' },
-              title: { display: true, text: 'Date', color: '#000' }
-            },
-            y: {
-              grid: { color: '#e0e0e0' },
-              ticks: { color: '#000' },
-              title: { display: true, text: 'Equity ($)', color: '#000' }
-            }
+            x: { type: 'time', time: { tooltipFormat: 'MMM d, yyyy' }, grid: { color: '#e0e0e0' }, ticks: { color: '#000' } },
+            y: { grid: { color: '#e0e0e0' }, ticks: { color: '#000' }, title: { display: true, text: 'Equity ($)', color: '#000' } }
           },
           plugins: {
             legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: ctx => `$${ctx.parsed.y.toFixed(2)}`
-              }
-            },
-            zoom: {
-              zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'x' },
-              pan: { enabled: true, modifierKey: 'shift', mode: 'x' }
-            }
+            tooltip: { callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}` } },
+            zoom: { zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'x' }, pan: { enabled: true, modifierKey: 'shift', mode: 'x' } }
           }
         }
       });
 
-      if (resetBtn) resetBtn.onclick = () => equityChartInstance.resetZoom();
+      if (reset) reset.onclick = () => equityChartInstance.resetZoom();
 
     } catch (err) {
       if (equityChartInstance) { equityChartInstance.destroy(); equityChartInstance = null; }
       canvas.classList.add('visually-hidden');
-      if (resetBtn) resetBtn.classList.add('visually-hidden');
+      if (reset) reset.classList.add('visually-hidden');
       if (msgEl) { msgEl.textContent = 'No data available'; msgEl.classList.remove('visually-hidden'); }
       console.error('Failed to load equity chart', err);
     }
@@ -475,10 +475,15 @@ document.addEventListener('DOMContentLoaded', () => {
         hideError('processMessage');
         try {
           const body = force ? { force: true } : undefined;
-          const data = await fetchJson('/api/process-portfolio', { method: 'POST', body });
+          const data = await fetchJson('/api/process-portfolio', { method: 'POST', body, timeoutMs: 60000 });
           renderProcessedPortfolio(data);
+          if (data?.as_of_date_et && data?.totals?.total_equity != null) {
+            if (!equityChartInstance) await loadEquityChart();
+            upsertChartPoint(data.as_of_date_et, data.totals.total_equity);
+          } else {
+            await loadEquityChart();
+          }
           showStatus(data.message || 'Portfolio processed successfully', 'processMessage');
-          await loadEquityChart();
         } catch (err) {
           showStatus(err.message || 'Failed to process portfolio', 'processMessage');
         } finally {
