@@ -173,8 +173,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function ensureOk(res, fallback, opts) {
-    if (res.ok) return;
+  async function ensureOk(res, fallback, opts = {}) {
+    const { expectContentType } = opts;
+
+    if (res.ok) {
+      // Even when the status is OK, the server might have responded with an
+      // unexpected content type.  Previously this check was skipped which
+      // meant callers attempting to parse JSON could fail with a cryptic
+      // error.  Verify the content type and surface a clear message instead.
+      if (expectContentType) {
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes(expectContentType)) {
+          const msg = await getErrorMessage(res, fallback, { expectContentType });
+          throw new Error(msg);
+        }
+      }
+      return;
+    }
+
     const msg = await getErrorMessage(res, fallback, opts);
     if (res.status === 401) {
       localStorage.removeItem('token');

@@ -138,8 +138,25 @@ def _stooq_symbol(ticker: str) -> str:
 
 
 def _safe_download(ticker: str, start: date, end: date) -> pd.DataFrame | None:
+    """Attempt to download recent price data for ``ticker``.
+
+    The previous implementation always queried a fixed 20 day period which
+    ignored the requested ``start`` and ``end`` range.  This meant callers could
+    not control the look‑back window which in turn made tests slower and, in
+    certain cases, returned stale data.  By respecting ``start`` and ``end`` we
+    both narrow the network request and avoid surprising results.
+    """
+
     try:
-        df = yf.download(ticker, period="20d", progress=False)
+        if start and end:
+            df = yf.download(
+                ticker,
+                start=start.isoformat(),
+                end=end.isoformat(),
+                progress=False,
+            )
+        else:
+            df = yf.download(ticker, period="20d", progress=False)
         if isinstance(df, pd.DataFrame) and not df.empty:
             df = df.tail(60)
             if df.index.tz is None:
@@ -161,7 +178,17 @@ def _safe_download(ticker: str, start: date, end: date) -> pd.DataFrame | None:
     period_days = max(1, (end - start).days) if start and end else 20
     try:
         ticker_obj = yf.Ticker(ticker)
-        df = ticker_obj.history(period=f"{period_days}d", interval="1d", raise_errors=False)
+        if start and end:
+            df = ticker_obj.history(
+                start=start.isoformat(),
+                end=end.isoformat(),
+                interval="1d",
+                raise_errors=False,
+            )
+        else:
+            df = ticker_obj.history(
+                period=f"{period_days}d", interval="1d", raise_errors=False
+            )
         if isinstance(df, pd.DataFrame) and not df.empty:
             df = df.tail(60)
             if df.index.tz is None:
@@ -183,7 +210,9 @@ def _safe_download(ticker: str, start: date, end: date) -> pd.DataFrame | None:
         except Exception:
             price = None
         if price:
-            dt = datetime.now(US_EASTERN).replace(hour=0, minute=0, second=0, microsecond=0)
+            dt = datetime.now(US_EASTERN).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             df = pd.DataFrame(
                 {
                     "Open": [price],
