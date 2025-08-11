@@ -6,8 +6,6 @@ from functools import wraps
 import os
 import sqlite3
 from typing import Literal
-import time as time_module
-from json import JSONDecodeError
 
 import jwt
 import pandas as pd
@@ -15,7 +13,6 @@ import yfinance as yf
 from flask import Flask, jsonify, request, render_template
 from zoneinfo import ZoneInfo
 from flask_bcrypt import Bcrypt
-from requests.exceptions import RequestException
 
 import trading_script as ts
 from repo import (
@@ -63,12 +60,6 @@ def login_page() -> str:
 @app.route("/signin")
 def signin_page() -> str:
     return render_template("signin.html")
-
-
-@app.route("/sample-portfolio")
-def sample_portfolio() -> str:
-    return render_template("sample_portfolio.html")
-
 
 @app.route("/dashboard")
 def dashboard_page() -> str:
@@ -226,7 +217,6 @@ def _safe_download(ticker: str, start: date, end: date) -> pd.DataFrame | None:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         df = df[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
         app.logger.info("stooq_fallback_used %s", ticker)
-        print(f"[INFO] Using Stooq fallback for {ticker} — Yahoo returned bad/empty data.")
         return df
     except Exception as e:
         app.logger.warning("download_failed %s %s", ticker, e)
@@ -573,6 +563,4 @@ def api_process_portfolio(user_id):
     )
 
 if __name__ == "__main__":
-    from db import init_db as init_models
-    init_models()
     app.run(debug=True)

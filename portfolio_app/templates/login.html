@@ -27,7 +27,6 @@
         <button type="submit">Login</button>
         <p id="error" class="error-message" role="alert"></p>
     </form>
-    <p><a href="/sample-portfolio">View Sample Portfolio</a></p>
 </div>
 <script>
 const loginPassword = document.getElementById('login-password');
@@ -59,7 +58,6 @@ document.getElementById('login-form').addEventListener('submit', async e => {
             errorEl.textContent = data.message || 'Login failed';
         }
     } catch (err) {
-        console.error(err);
         errorEl.textContent = 'Network error';
     }
 });
