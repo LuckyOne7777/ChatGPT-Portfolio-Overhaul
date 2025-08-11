@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, UTC
 from decimal import Decimal
 from typing import Iterable
 
@@ -39,7 +39,7 @@ def upsert_position(session: Session, ticker: str, shares: Decimal, avg_price: D
         pos.shares = shares
         pos.avg_price = avg_price
         pos.stop_loss = stop_loss
-        pos.updated_at = datetime.utcnow()
+        pos.updated_at = datetime.now(UTC)
     return pos
 
 def delete_position(session: Session, ticker: str) -> None:

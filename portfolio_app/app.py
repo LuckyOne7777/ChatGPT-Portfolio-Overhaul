@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time, timedelta, UTC
 from decimal import Decimal
 from functools import wraps
 import os
@@ -288,7 +288,10 @@ def get_close_price(
             row = prev_rows.iloc[-1]
             date_str = row.name.date().isoformat()
             source = "prev_close" if date_str < target_date.isoformat() else "close"
-            return float(row["Close"]), date_str, source
+            close_val = row["Close"]
+            if isinstance(close_val, pd.Series):
+                close_val = close_val.iloc[0]
+            return float(close_val), date_str, source
 
     if buy_price and buy_price > 0:
         return float(buy_price), today_str, "fallback_buy"
@@ -334,7 +337,7 @@ def login():
     if not row or not bcrypt.check_password_hash(row[1], password):
         return jsonify({"message": "Invalid credentials"}), 401
     token = jwt.encode(
-        {"id": row[0], "exp": datetime.utcnow() + timedelta(hours=24)},
+        {"id": row[0], "exp": datetime.now(UTC) + timedelta(hours=24)},
         app.config["SECRET_KEY"],
         algorithm="HS256",
     )
@@ -501,7 +504,7 @@ def api_process_portfolio(user_id):
     else:
         app.logger.warning("process-portfolio forced by user %s", user_id)
 
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(UTC)
     mode = "force" if force else "regular"
 
     with begin_tx() as session:
