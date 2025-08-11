@@ -6,13 +6,16 @@ from zoneinfo import ZoneInfo
 
 import sys
 import types
+from pathlib import Path
 import pandas as pd
 
 dummy_ts = types.ModuleType("trading_script")
 dummy_ts.load_latest_portfolio_state = lambda *a, **k: ([], 0.0)
 dummy_ts.process_portfolio = lambda *a, **k: None
 sys.modules.setdefault("trading_script", dummy_ts)
-sys.path.append("portfolio_app")
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT))
+sys.path.append(str(ROOT / "portfolio_app"))
 
 import portfolio_app.app as app_module
 
@@ -23,7 +26,6 @@ def _bad_download(*args, **kwargs):
 
 def test_get_close_price_fallback(monkeypatch):
     monkeypatch.setattr(app_module.yf, "download", _bad_download)
-    monkeypatch.setattr(app_module.time_module, "sleep", lambda *a, **k: None)
     now = datetime(2024, 1, 5, tzinfo=ZoneInfo("UTC"))
     price, date_str, source = app_module.get_close_price("AZTR", "force", now, buy_price=1.23)
     assert price == 1.23
@@ -33,7 +35,6 @@ def test_get_close_price_fallback(monkeypatch):
 
 def test_api_process_portfolio_force(monkeypatch):
     monkeypatch.setattr(app_module.yf, "download", _bad_download)
-    monkeypatch.setattr(app_module.time_module, "sleep", lambda *a, **k: None)
 
     class Pos:
         ticker = "AZTR"

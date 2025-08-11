@@ -47,7 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ----- UI helpers ----------------------------------------------------------
   function showError(message, err, elementId = 'errorMessage') {
-    if (err) console.error(err);
     const el = document.getElementById(elementId);
     if (el) {
       el.textContent = message;
@@ -388,7 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
       canvas.classList.add('visually-hidden');
       if (reset) reset.classList.add('visually-hidden');
       if (msgEl) { msgEl.textContent = 'No data available'; msgEl.classList.remove('visually-hidden'); }
-      console.error('Failed to load equity chart', err);
+      
     }
   }
 
