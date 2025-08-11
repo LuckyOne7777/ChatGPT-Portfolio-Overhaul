@@ -1,7 +1,7 @@
 import jwt
 from decimal import Decimal
 from json import JSONDecodeError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from zoneinfo import ZoneInfo
 
 import sys
@@ -59,7 +59,7 @@ def test_api_process_portfolio_force(monkeypatch):
     monkeypatch.setattr(app_module, "get_cash_balance", fake_get_cash_balance)
     monkeypatch.setattr(app_module, "upsert_equity", lambda *a, **k: None)
 
-    token = jwt.encode({"id": 1, "exp": datetime.utcnow() + timedelta(hours=1)}, app_module.app.config["SECRET_KEY"], algorithm="HS256")
+    token = jwt.encode({"id": 1, "exp": datetime.now(UTC) + timedelta(hours=1)}, app_module.app.config["SECRET_KEY"], algorithm="HS256")
     client = app_module.app.test_client()
     resp = client.post("/api/process-portfolio?force=true", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
