@@ -8,39 +8,42 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   let equityChartInstance = null;
 
+  // Normalize raw equity history so each day appears once and is sorted.
   function normalizeHistory(raw) {
-    // Deduplicate by 'YYYY-MM-DD' (last write wins), coerce to numbers, sort.
-    const byDay = new Map();
-    for (const d of Array.isArray(raw) ? raw : []) {
-      const day = typeof d.date === 'string' ? d.date.slice(0,10) : '';
-      const val = Number(d.equity);
-      if (day && Number.isFinite(val)) byDay.set(day, val);
+    const pointsByDay = new Map();
+    for (const entry of Array.isArray(raw) ? raw : []) {
+      const day = typeof entry.date === 'string' ? entry.date.slice(0, 10) : '';
+      const val = Number(entry.equity);
+      if (day && Number.isFinite(val)) {
+        // Later entries overwrite earlier ones for the same day.
+        pointsByDay.set(day, val);
+      }
     }
-    return Array.from(byDay.entries())
-      .map(([day, eq]) => ({ x: new Date(day + 'T00:00:00'), y: eq }))
+    return Array.from(pointsByDay.entries())
+      .map(([day, eq]) => ({ x: new Date(`${day}T00:00:00`), y: eq }))
       .filter(p => !Number.isNaN(p.x.getTime()) && Number.isFinite(p.y))
-      .sort((a,b) => a.x - b.x);
+      .sort((a, b) => a.x - b.x);
   }
 
+  // Insert or replace a point for the given day on the existing chart.
   function upsertChartPoint(dateStr, equity) {
     if (!equityChartInstance) return;
     const y = Number(equity);
     if (!Number.isFinite(y)) return;
 
+    const day = dateStr.slice(0, 10);
+    const x = new Date(`${day}T00:00:00`);
     const data = equityChartInstance.data.datasets[0].data || [];
-    const day = dateStr.slice(0,10);
-    const x = new Date(day + 'T00:00:00');
 
-    // Overwrite if exists, else append
     const idx = data.findIndex(p => {
       const d = p.x instanceof Date ? p.x : new Date(p.x);
-      return d.toISOString().slice(0,10) === day;
+      return d.toISOString().slice(0, 10) === day;
     });
 
-    if (idx !== -1) data[idx] = { x, y };
+    if (idx >= 0) data[idx] = { x, y };
     else data.push({ x, y });
 
-    data.sort((a,b) => (a.x - b.x));
+    data.sort((a, b) => a.x - b.x);
     equityChartInstance.data.datasets[0].data = data;
     equityChartInstance.update('none');
   }
