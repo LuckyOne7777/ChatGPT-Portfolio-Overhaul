@@ -3,53 +3,108 @@
 document.addEventListener('DOMContentLoaded', () => {
   const token = localStorage.getItem('token');
   let startingCapital = null;
+  let equityChartInstance = null;
+
+  // Register zoom plugin if present
   if (window.Chart && window.Chart.register && window.ChartZoom) {
     Chart.register(window.ChartZoom);
   }
-  let equityChartInstance = null;
 
-  // Normalize raw equity history so each day appears once and is sorted.
+  // ---------- Helpers: data shaping ------------------------------------------
+  // Normalize raw equity history so each day appears once (latest wins) and is sorted.
   function normalizeHistory(raw) {
     const pointsByDay = new Map();
     for (const entry of Array.isArray(raw) ? raw : []) {
       const day = typeof entry.date === 'string' ? entry.date.slice(0, 10) : '';
       const val = Number(entry.equity);
-      if (day && Number.isFinite(val)) {
-        // Later entries overwrite earlier ones for the same day.
-        pointsByDay.set(day, val);
-      }
+      if (day && Number.isFinite(val)) pointsByDay.set(day, val);
     }
     return Array.from(pointsByDay.entries())
-      .map(([day, eq]) => ({ x: new Date(`${day}T00:00:00`), y: eq }))
+      .map(([day, eq]) => ({ x: new Date(`${day}T00:00:00`), y: Number(eq) }))
       .filter(p => !Number.isNaN(p.x.getTime()) && Number.isFinite(p.y))
       .sort((a, b) => a.x - b.x);
   }
 
-  // Insert or replace a point for the given day on the existing chart.
+  // Insert or replace a point for the given day.
+  // If the chart doesn't exist yet, bootstrap it with this single point.
   function upsertChartPoint(dateStr, equity) {
-    if (!equityChartInstance) return;
     const y = Number(equity);
-    if (!Number.isFinite(y)) return;
+    if (!Number.isFinite(y) || !dateStr) return;
 
     const day = dateStr.slice(0, 10);
     const x = new Date(`${day}T00:00:00`);
-    const data = equityChartInstance.data.datasets[0].data || [];
 
+    // Bootstrap path: create the chart with a single point
+    if (!equityChartInstance) {
+      const canvas = document.getElementById('equityChart');
+      const msgEl  = document.getElementById('noDataMessage');
+      const reset  = document.getElementById('resetZoomBtn');
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      canvas.classList.remove('visually-hidden');
+      if (reset) reset.classList.remove('visually-hidden');
+      if (msgEl) msgEl.classList.add('visually-hidden');
+
+      equityChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            data: [{ x, y }],
+            borderColor: '#1f77b4',
+            backgroundColor: '#1f77b4',
+            pointRadius: 3,
+            pointHoverRadius: 4,
+            fill: false,
+            tension: 0
+          }]
+        },
+        options: {
+          parsing: false,
+          responsive: true,
+          interaction: { mode: 'nearest', intersect: false },
+          scales: {
+            x: {
+              type: 'time',
+              time: {
+                unit: 'day',
+                tooltipFormat: 'MMM do, yyyy',
+                displayFormats: { day: 'MMM do' }
+              }
+            },
+            y: {
+              title: { display: true, text: 'Equity ($)' }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => `$${c.parsed.y.toFixed(2)}` } },
+            zoom: {
+              zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'x' },
+              pan:  { enabled: true, modifierKey: 'shift', mode: 'x' }
+            }
+          }
+        }
+      });
+
+      if (reset) reset.onclick = () => equityChartInstance.resetZoom();
+      return;
+    }
+
+    // Normal update path
+    const data = equityChartInstance.data.datasets[0].data || [];
     const idx = data.findIndex(p => {
       const d = p.x instanceof Date ? p.x : new Date(p.x);
       return d.toISOString().slice(0, 10) === day;
     });
-
-    if (idx >= 0) data[idx] = { x, y };
-    else data.push({ x, y });
-
+    if (idx >= 0) data[idx] = { x, y }; else data.push({ x, y });
     data.sort((a, b) => a.x - b.x);
     equityChartInstance.data.datasets[0].data = data;
     equityChartInstance.update('none');
   }
 
-  // ----- UI helpers ----------------------------------------------------------
-  function showError(message, err, elementId = 'errorMessage') {
+  // ---------- UI helpers -----------------------------------------------------
+  function showError(message, _err, elementId = 'errorMessage') {
     const el = document.getElementById(elementId);
     if (el) {
       el.textContent = message;
@@ -82,18 +137,15 @@ document.addEventListener('DOMContentLoaded', () => {
     return true;
   }
 
-  // ----- Network helpers -----------------------------------------------------
+  // ---------- Network helpers -----------------------------------------------
   async function getErrorMessage(res, fallback, { expectContentType } = {}) {
     if (!res || typeof res.ok !== 'boolean') return fallback;
-
     const ct = res.headers.get('content-type') || '';
 
-    // If we expected a specific content type (e.g., image/png) but got something else
     if (expectContentType && res.ok && !ct.includes(expectContentType)) {
       return `Unexpected response type. Expected ${expectContentType}, got ${ct || 'none'} (status ${res.status}).`;
     }
 
-    // Try to extract a server-provided message
     let serverMsg = '';
     try {
       const data = await res.clone().json();
@@ -106,8 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const base = serverMsg || fallback;
-
-    // Map common HTTP statuses to friendly messages
     switch (res.status) {
       case 400: return `${base} — Your request was invalid (400). Check inputs.`;
       case 401: return `${base || 'Session expired'} — Please sign in again (401).`;
@@ -127,7 +177,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (res.ok) return;
     const msg = await getErrorMessage(res, fallback, opts);
     if (res.status === 401) {
-      // Token likely expired — clear and redirect
       localStorage.removeItem('token');
       showError('Your session expired. Please sign in again.', null);
       setTimeout(() => (window.location.href = '/login'), 800);
@@ -147,18 +196,15 @@ document.addEventListener('DOMContentLoaded', () => {
         method,
         headers: {
           ...(body ? { 'Content-Type': 'application/json' } : {}),
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: body ? JSON.stringify(body) : undefined,
-        signal: ctrl.signal,
+        signal: ctrl.signal
       });
       await ensureOk(res, `Request failed for ${url}`, { expectContentType: expect });
       return await res.json();
     } catch (err) {
-      if (err.name === 'AbortError') {
-        throw new Error(`Request timed out for ${url}`);
-      }
-      // Reframe generic network errors with likely causes
+      if (err.name === 'AbortError') throw new Error(`Request timed out for ${url}`);
       const msg = String(err.message || err);
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
         throw new Error('Could not reach the server. If your backend is running, check CORS/HTTPS settings and the route.');
@@ -169,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ----- App init ------------------------------------------------------------
+  // ---------- App init -------------------------------------------------------
   if (!requireAuthOrRedirect()) return;
 
   init().catch(err => {
@@ -179,12 +225,12 @@ document.addEventListener('DOMContentLoaded', () => {
   async function init() {
     await checkStartingCash();
     await loadPortfolio();
-    loadTradeLog();      // don’t await to parallelize
-    loadEquityChart();   // don’t await to parallelize
+    loadTradeLog();     // parallel
+    loadEquityChart();  // parallel
     wireEvents();
   }
 
-  // ----- Features ------------------------------------------------------------
+  // ---------- Features -------------------------------------------------------
   async function checkStartingCash() {
     try {
       const data = await fetchJson('/api/needs-cash', { method: 'GET' });
@@ -192,15 +238,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let amount;
         do {
           const input = prompt('Enter starting cash (0 - 10,000):');
-          if (input === null) return; // user cancelled
+          if (input === null) return; // canceled
           const trimmed = input.trim();
           amount = /^\d+(\.\d+)?$/.test(trimmed) ? Number(trimmed) : NaN;
         } while (!Number.isFinite(amount) || amount < 0 || amount > 10000);
 
-        await fetchJson('/api/set-cash', {
-          method: 'POST',
-          body: { cash: amount },
-        });
+        await fetchJson('/api/set-cash', { method: 'POST', body: { cash: amount } });
       }
     } catch (err) {
       showError(err.message || 'Failed to check starting cash', err);
@@ -235,16 +278,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const el = document.getElementById('cashBalance');
         if (el) el.textContent = `$${data.cash}`;
       }
-
       if (data.deployed_capital != null) {
         const el = document.getElementById('deployedCapital');
         if (el) el.textContent = `$${data.deployed_capital}`;
       }
-
       if (data.total_equity != null) {
         const totalEl = document.getElementById('totalEquity');
         if (totalEl) totalEl.textContent = `$${data.total_equity}`;
-
         const eqChangeEl = document.getElementById('equityChange');
         if (eqChangeEl && Number.isFinite(startingCapital) && startingCapital !== 0) {
           const total = parseFloat(String(data.total_equity ?? '').replace(/,/g, ''));
@@ -281,15 +321,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const totals = data.totals || {};
-    const cash = Number(totals.cash ?? 0);
+    const cash   = Number(totals.cash ?? 0);
     const posVal = Number(totals.total_positions_value ?? 0);
-    const totalEq = Number(totals.total_equity ?? 0);
+    const totalEq= Number(totals.total_equity ?? 0);
 
     const totalTop = document.getElementById('totalEquity');
     if (totalTop) totalTop.textContent = `$${totalEq.toFixed(2)}`;
     const cashTop = document.getElementById('cashBalance');
     if (cashTop) cashTop.textContent = `$${cash.toFixed(2)}`;
-    const depTop = document.getElementById('deployedCapital');
+    const depTop  = document.getElementById('deployedCapital');
     if (depTop) depTop.textContent = `$${posVal.toFixed(2)}`;
 
     const eqChangeEl = document.getElementById('equityChange');
@@ -297,7 +337,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const change = ((totalEq - startingCapital) / startingCapital) * 100;
       eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
     }
-
   }
 
   async function loadTradeLog() {
@@ -349,8 +388,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!points.length) {
         canvas.classList.add('visually-hidden');
         if (reset) reset.classList.add('visually-hidden');
-        if (msgEl) { msgEl.textContent = 'No data available'; msgEl.classList.remove('visually-hidden'); }
-        if (equityChartInstance) { equityChartInstance.destroy(); equityChartInstance = null; }
+        if (msgEl) {
+          msgEl.textContent = 'No data available';
+          msgEl.classList.remove('visually-hidden');
+        }
+        if (equityChartInstance) {
+          equityChartInstance.destroy();
+          equityChartInstance = null;
+        }
         return;
       }
 
@@ -366,7 +411,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       equityChartInstance = new Chart(canvas.getContext('2d'), {
         type: 'line',
-        data: { datasets: [{ data: points, borderColor: '#1f77b4', backgroundColor: '#1f77b4', pointRadius: 3, pointHoverRadius: 4, fill: false, tension: 0 }] },
+        data: {
+          datasets: [{
+            data: points,
+            borderColor: '#1f77b4',
+            backgroundColor: '#1f77b4',
+            pointRadius: 3,
+            pointHoverRadius: 4,
+            fill: false,
+            tension: 0
+          }]
+        },
         options: {
           parsing: false,
           responsive: true,
@@ -382,28 +437,33 @@ document.addEventListener('DOMContentLoaded', () => {
               grid: { color: '#e0e0e0' },
               ticks: { color: '#000' }
             },
-            y: { grid: { color: '#e0e0e0' }, ticks: { color: '#000' }, title: { display: true, text: 'Equity ($)', color: '#000' } }
+            y: {
+              grid: { color: '#e0e0e0' },
+              ticks: { color: '#000' },
+              title: { display: true, text: 'Equity ($)', color: '#000' }
+            }
           },
           plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}` } },
-            zoom: { zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'x' }, pan: { enabled: true, modifierKey: 'shift', mode: 'x' } }
+            tooltip: { callbacks: { label: c => `$${c.parsed.y.toFixed(2)}` } },
+            zoom: {
+              zoom: { wheel: { enabled: true, modifierKey: 'alt' }, mode: 'x' },
+              pan:  { enabled: true, modifierKey: 'shift', mode: 'x' }
+            }
           }
         }
       });
 
       if (reset) reset.onclick = () => equityChartInstance.resetZoom();
-
-    } catch (err) {
+    } catch (_err) {
       if (equityChartInstance) { equityChartInstance.destroy(); equityChartInstance = null; }
       canvas.classList.add('visually-hidden');
       if (reset) reset.classList.add('visually-hidden');
       if (msgEl) { msgEl.textContent = 'No data available'; msgEl.classList.remove('visually-hidden'); }
-      
     }
   }
 
-  // ----- Events --------------------------------------------------------------
+  // ---------- Events ---------------------------------------------------------
   function wireEvents() {
     const tradeForm = document.getElementById('tradeForm');
     if (tradeForm) {
@@ -414,12 +474,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const ticker = document.getElementById('trade-ticker')?.value?.trim().toUpperCase();
         const action = document.getElementById('trade-action')?.value;
-        const price = parseFloat(document.getElementById('trade-price')?.value);
+        const price  = parseFloat(document.getElementById('trade-price')?.value);
         const shares = parseFloat(document.getElementById('trade-shares')?.value);
         const reason = document.getElementById('trade-reason')?.value?.trim();
         const stopLossInput = (document.getElementById('trade-stop-loss')?.value || '').trim();
 
-        // Basic client-side validation
+        // Basic validation
         if (!ticker || !action || !Number.isFinite(price) || price <= 0 || !Number.isFinite(shares) || shares <= 0) {
           showError('Please provide a valid ticker, action, price (>0), and shares (>0).', undefined, 'tradeErrorMessage');
           return;
@@ -427,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const payload = { ticker, action, price, shares, reason };
 
-        // Stop loss validation
+        // Stop loss validation (supports absolute or %)
         if (stopLossInput) {
           let valid = false;
           if (stopLossInput.endsWith('%')) {
@@ -451,10 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-          await fetchJson('/api/trade', {
-            method: 'POST',
-            body: payload,
-          });
+          await fetchJson('/api/trade', { method: 'POST', body: payload });
           tradeForm.reset();
           await loadPortfolio();
           await loadTradeLog();
@@ -466,27 +523,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const processBtn = document.getElementById('processPortfolioBtn');
-    const forceBtn = document.getElementById('forceProcessPortfolioBtn');
+    const forceBtn   = document.getElementById('forceProcessPortfolioBtn');
     if (processBtn && forceBtn) {
       const handle = async (force = false) => {
         const buttons = [processBtn, forceBtn];
-        buttons.forEach(b => b.disabled = true);
+        buttons.forEach(b => (b.disabled = true));
         hideError('processMessage');
+
         try {
           const body = force ? { force: true } : undefined;
           const data = await fetchJson('/api/process-portfolio', { method: 'POST', body, timeoutMs: 60000 });
           renderProcessedPortfolio(data);
+
+          // Always plot the returned point immediately
           if (data?.as_of_date_et && data?.totals?.total_equity != null) {
-            if (!equityChartInstance) await loadEquityChart();
             upsertChartPoint(data.as_of_date_et, data.totals.total_equity);
-          } else {
-            await loadEquityChart();
           }
+
+          // Refresh full history (keeps single point while it loads)
+          await loadEquityChart();
+
           showStatus(data.message || 'Portfolio processed successfully', 'processMessage');
         } catch (err) {
           showStatus(err.message || 'Failed to process portfolio', 'processMessage');
         } finally {
-          buttons.forEach(b => b.disabled = false);
+          buttons.forEach(b => (b.disabled = false));
         }
       };
 
