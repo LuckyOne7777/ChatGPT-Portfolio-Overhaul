@@ -281,17 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const totals = data.totals || {};
     const cash = Number(totals.cash ?? 0);
     const posVal = Number(totals.total_positions_value ?? 0);
-    const pnl = Number(totals.total_pnl ?? 0);
     const totalEq = Number(totals.total_equity ?? 0);
-
-    const cashEl = document.getElementById('totalsCash');
-    if (cashEl) cashEl.textContent = `$${cash.toFixed(2)}`;
-    const posValEl = document.getElementById('totalsPositionsValue');
-    if (posValEl) posValEl.textContent = `$${posVal.toFixed(2)}`;
-    const pnlEl = document.getElementById('totalsPnl');
-    if (pnlEl) pnlEl.textContent = `$${pnl.toFixed(2)}`;
-    const totalEqEl = document.getElementById('totalsTotalEquity');
-    if (totalEqEl) totalEqEl.textContent = `$${totalEq.toFixed(2)}`;
 
     const totalTop = document.getElementById('totalEquity');
     if (totalTop) totalTop.textContent = `$${totalEq.toFixed(2)}`;
@@ -306,8 +296,6 @@ document.addEventListener('DOMContentLoaded', () => {
       eqChangeEl.textContent = `(${change.toFixed(2)}%)`;
     }
 
-    const caption = document.getElementById('asOfCaption');
-    if (caption) caption.textContent = `As of ${data.as_of_date_et}${data.forced ? ' (forced)' : ''}`;
   }
 
   async function loadTradeLog() {
