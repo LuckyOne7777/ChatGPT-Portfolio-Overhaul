@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const day = dateStr.slice(0, 10);
     const x = new Date(`${day}T00:00:00`);
 
-    // Bootstrap path: create the chart with a single point
+    // If the chart doesn't yet exist, bootstrap it with this point.
     if (!equityChartInstance) {
       const canvas = document.getElementById('equityChart');
       const msgEl  = document.getElementById('noDataMessage');
@@ -91,14 +91,16 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Normal update path
+    // Normal update path: insert a new daily point or replace the most recent one
     const data = equityChartInstance.data.datasets[0].data || [];
-    const idx = data.findIndex(p => {
-      const d = p.x instanceof Date ? p.x : new Date(p.x);
-      return d.toISOString().slice(0, 10) === day;
-    });
-    if (idx >= 0) data[idx] = { x, y }; else data.push({ x, y });
-    data.sort((a, b) => a.x - b.x);
+    const last = data[data.length - 1];
+    const lastDay = last ? new Date(last.x).toISOString().slice(0, 10) : null;
+    if (lastDay === day) {
+      data[data.length - 1] = { x, y };
+    } else {
+      data.push({ x, y });
+      data.sort((a, b) => a.x - b.x);
+    }
     equityChartInstance.data.datasets[0].data = data;
     equityChartInstance.update('none');
   }
