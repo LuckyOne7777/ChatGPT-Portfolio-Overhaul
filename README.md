@@ -34,7 +34,7 @@ Check out the [Contributing Guide](https://github.com/LuckyOne7777/ChatGPT-Portf
 First, install necessary libraries:
 
 ```bash
-pip install -r portfolio_app/requirements.txt
+pip install -r requirements.txt
 ```
 
 Then run the script `app.py`.
