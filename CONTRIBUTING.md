@@ -2,7 +2,7 @@
 
 Thank you for your interest in improving this project! Your time and effort are greatly appreciated.
 
-I've been having to rely on Codex for devolpment, so contributions are extremely helpful!
+I've been having to rely on Codex for development, so contributions are extremely helpful!
 
 ## Reporting Issues
 If you encounter a problem or have an idea for improvement, please open an issue on GitHub. Give a clear title and description so we can reproduce it. Examples include:
