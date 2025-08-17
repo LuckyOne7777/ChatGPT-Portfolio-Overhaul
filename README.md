@@ -3,6 +3,8 @@
 A Flask + Python app that tracks and visualizes a simulated portfolio’s performance, comparing it to the S&P 500 baseline.  
 Originally built for my AI-led micro-cap experiment, now open for others to use.
 
+### HELP NEEDED!! [Contributing Guide](https://github.com/LuckyOne7777/ChatGPT-Portfolio-Overhaul/blob/main/CONTRIBUTING.md)
+
 **Note: Very early in devolopment. Some features won't work as expected.**
 
 ---
@@ -52,6 +54,7 @@ That's it! from there you can interact with the webpage.
 Find a bug or have a suggestion?
 
 Gmail: nathanbsmith.business@gmail.com 
+
 
 
 
