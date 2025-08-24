@@ -41,7 +41,152 @@ def init_db() -> None:
         c.execute(
             "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, email TEXT UNIQUE, password TEXT)"
         )
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS password_resets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                expires_at DATETIME NOT NULL,
+                used INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
         conn.commit()
+
+@app.route("/forgot-password")
+def forgot_password_page() -> str:
+    return render_template("forgot-password.html")
+
+@app.route("/api/forgot-password", methods=["POST"])
+def api_forgot_password():
+    data = request.get_json() or {}
+    email = data.get("email", "").strip()
+    
+    if not email:
+        return jsonify({"message": "Email is required"}), 400
+    
+    with sqlite3.connect(DATABASE) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM users WHERE email=?", (email,))
+        user = c.fetchone()
+        
+        if not user:
+    
+            return jsonify({"message": "If the email exists, a reset link has been sent"}), 200
+        
+        user_id = user[0]
+        
+        token = secrets.token_urlsafe(32)
+        expires_at = (datetime.now() + timedelta(hours=1)).isoformat()
+        
+        c.execute("DELETE FROM password_resets WHERE user_id=?", (user_id,))
+        
+        c.execute(
+            "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)",
+            (user_id, token, expires_at)
+        )
+        conn.commit()
+        
+        
+        print(f"Password reset token for {email}: {token}")  
+    
+    return jsonify({"message": "If the email exists, a reset link has been sent"}), 200
+
+@app.route("/api/reset-password", methods=["POST"])
+def api_reset_password():
+    data = request.get_json() or {}
+    email = data.get("email", "")
+    token = data.get("token", "")
+    password = data.get("password", "")
+    confirm_password = data.get("confirm_password", "")
+    
+    if not email or not password or not confirm_password:
+        return jsonify({"message": "All fields are required"}), 400
+    
+    if password != confirm_password:
+        return jsonify({"message": "Passwords do not match"}), 400
+    
+    if len(password) < 8:
+        return jsonify({"message": "Password must be at least 8 characters long"}), 400
+    
+    with sqlite3.connect(DATABASE) as conn:
+        c = conn.cursor()
+        
+        c.execute("SELECT id FROM users WHERE email=?", (email,))
+        user = c.fetchone()
+        
+        if not user:
+            return jsonify({"message": "Invalid email"}), 400
+        
+        user_id = user[0]
+        
+        if token:  
+            c.execute(
+                "SELECT expires_at, used FROM password_resets WHERE user_id=? AND token=?",
+                (user_id, token)
+            )
+            reset_data = c.fetchone()
+            
+            if not reset_data:
+                return jsonify({"message": "Invalid or expired reset token"}), 400
+            
+            expires_at, used = reset_data
+            
+            if used:
+                return jsonify({"message": "This reset token has already been used"}), 400
+            
+            if datetime.fromisoformat(expires_at) < datetime.now():
+                return jsonify({"message": "This reset token has expired"}), 400
+            
+            c.execute("UPDATE password_resets SET used=1 WHERE token=?", (token,))
+        
+        hashed = bcrypt.generate_password_hash(password).decode("utf-8")
+        c.execute("UPDATE users SET password=? WHERE id=?", (hashed, user_id))
+        conn.commit()
+    
+    return jsonify({"message": "Password has been reset successfully"}), 200
+
+@app.route("/api/verify-reset-token", methods=["POST"])
+def api_verify_reset_token():
+    data = request.get_json() or {}
+    email = data.get("email", "")
+    token = data.get("token", "")
+    
+    if not email or not token:
+        return jsonify({"message": "Email and token are required"}), 400
+    
+    with sqlite3.connect(DATABASE) as conn:
+        c = conn.cursor()
+        
+        c.execute("SELECT id FROM users WHERE email=?", (email,))
+        user = c.fetchone()
+        
+        if not user:
+            return jsonify({"message": "Invalid email"}), 400
+        
+        user_id = user[0]
+        
+     
+        c.execute(
+            "SELECT expires_at, used FROM password_resets WHERE user_id=? AND token=?",
+            (user_id, token)
+        )
+        reset_data = c.fetchone()
+        
+        if not reset_data:
+            return jsonify({"message": "Invalid or expired reset token"}), 400
+        
+        expires_at, used = reset_data
+        
+        if used:
+            return jsonify({"message": "This reset token has already been used"}), 400
+        
+        if datetime.fromisoformat(expires_at) < datetime.now():
+            return jsonify({"message": "This reset token has expired"}), 400
+    
+    return jsonify({"message": "Token is valid"}), 200
+
 
 init_db()
 init_models()

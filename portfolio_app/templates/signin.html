@@ -7,7 +7,142 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="/login.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(120deg, #a1c4fd, #c2e9fb);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .login-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            width: 400px;
+            padding: 40px;
+        }
+        
+        h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        
+        .input-group {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        .input-group i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #777;
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px 12px 45px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .input-group input:focus {
+            border-color: #a1c4fd;
+            outline: none;
+        }
+        
+        .toggle-password {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #777;
+            cursor: pointer;
+        }
+        
+        button[type="submit"] {
+            width: 100%;
+            padding: 12px;
+            background-color: #6c63ff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        button[type="submit"]:hover {
+            background-color: #554fd8;
+        }
+        
+        .error-message {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .login-link {
+            text-align: center;
+            margin-top: 20px;
+            color: #777;
+        }
+        
+        .login-link a {
+            color: #6c63ff;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        
+        .login-link a:hover {
+            text-decoration: underline;
+            color: #554fd8;
+        }
+        
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        
+        .password-requirements {
+            font-size: 12px;
+            color: #777;
+            margin-top: 5px;
+        }
+        
+        .input-error {
+            border-color: #e74c3c !important;
+        }
+        
+        .field-error {
+            color: #e74c3c;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
 </head>
 <body>
 <div class="login-container">
@@ -22,30 +157,100 @@
             <i class="fas fa-envelope"></i>
             <label class="visually-hidden" for="signup-email">Email</label>
             <input type="email" id="signup-email" placeholder="Email" required>
+            
         </div>
         <div class="input-group">
             <i class="fas fa-lock"></i>
             <label class="visually-hidden" for="signup-password">Password</label>
-            <input type="password" id="signup-password" placeholder="Password" required>
+            <input type="password" id="signup-password" placeholder="Password" required minlength="8">
             <button type="button" id="signup-toggle-password" class="toggle-password" aria-label="Show password"><i class="fas fa-eye"></i></button>
+            
+        </div>
+        <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <label class="visually-hidden" for="signup-confirm-password">Confirm Password</label>
+            <input type="password" id="signup-confirm-password" placeholder="Confirm Password" required>
+            <button type="button" id="signup-toggle-confirm-password" class="toggle-password" aria-label="Show password"><i class="fas fa-eye"></i></button>
         </div>
         <button type="submit">Sign Up</button>
         <p id="signup-error" class="error-message" role="alert"></p>
+        <div class="login-link">
+            Already have an account? <a href="/login">Log in</a>
+        </div>
     </form>
 </div>
 <script>
 const signupPassword = document.getElementById('signup-password');
 const signupToggle = document.getElementById('signup-toggle-password');
-signupToggle.addEventListener('click', () => {
-    const type = signupPassword.getAttribute('type') === 'password' ? 'text' : 'password';
-    signupPassword.setAttribute('type', type);
-    signupToggle.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
-});
+const signupConfirmPassword = document.getElementById('signup-confirm-password');
+const signupConfirmToggle = document.getElementById('signup-toggle-confirm-password');
+
+// Funkcja do przełączania widoczności hasła
+function setupPasswordToggle(passwordField, toggleButton) {
+    toggleButton.addEventListener('click', () => {
+        const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordField.setAttribute('type', type);
+        toggleButton.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+    });
+}
+
+setupPasswordToggle(signupPassword, signupToggle);
+setupPasswordToggle(signupConfirmPassword, signupConfirmToggle);
+
+// Walidacja formatu email
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+// Walidacja formularza przed wysłaniem
+function validateForm() {
+    const username = document.getElementById('signup-username').value;
+    const email = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    const confirmPassword = document.getElementById('signup-confirm-password').value;
+    const errorEl = document.getElementById('signup-error');
+    
+    // Resetowanie błędów
+    errorEl.textContent = '';
+    document.getElementById('signup-email').classList.remove('input-error');
+    document.getElementById('signup-password').classList.remove('input-error');
+    document.getElementById('signup-confirm-password').classList.remove('input-error');
+    
+    // Walidacja email
+    if (!isValidEmail(email)) {
+        errorEl.textContent = 'Please enter a valid email address (e.g., name@domain.com)';
+        document.getElementById('signup-email').classList.add('input-error');
+        return false;
+    }
+    
+    // Walidacja długości hasła
+    if (password.length < 8) {
+        errorEl.textContent = 'Password must be at least 8 characters long';
+        document.getElementById('signup-password').classList.add('input-error');
+        return false;
+    }
+    
+    // Walidacja zgodności haseł
+    if (password !== confirmPassword) {
+        errorEl.textContent = 'Passwords do not match';
+        document.getElementById('signup-confirm-password').classList.add('input-error');
+        return false;
+    }
+    
+    return true;
+}
 
 document.getElementById('signup-form').addEventListener('submit', async e => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+        return;
+    }
+    
     const errorEl = document.getElementById('signup-error');
     errorEl.textContent = '';
+    
     try {
         const res = await fetch('/api/register', {
             method: 'POST',
@@ -66,7 +271,32 @@ document.getElementById('signup-form').addEventListener('submit', async e => {
         errorEl.textContent = 'Network error';
     }
 });
+
+// Walidacja w czasie rzeczywistym
+document.getElementById('signup-email').addEventListener('blur', function() {
+    if (this.value && !isValidEmail(this.value)) {
+        this.classList.add('input-error');
+    } else {
+        this.classList.remove('input-error');
+    }
+});
+
+document.getElementById('signup-password').addEventListener('input', function() {
+    if (this.value.length > 0 && this.value.length < 8) {
+        this.classList.add('input-error');
+    } else {
+        this.classList.remove('input-error');
+    }
+});
+
+document.getElementById('signup-confirm-password').addEventListener('input', function() {
+    const password = document.getElementById('signup-password').value;
+    if (this.value !== password) {
+        this.classList.add('input-error');
+    } else {
+        this.classList.remove('input-error');
+    }
+});
 </script>
 </body>
 </html>
-
